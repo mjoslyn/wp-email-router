@@ -10,12 +10,19 @@ class Test_Import_Export extends EIR_Test_Case {
 	public function test_imports_valid_payload() {
 		$data = array(
 			'email_replacement_pairs' => array(
-				array( 'title' => 'X', 'target' => 't@example.com', 'replacement' => 'r@example.com' ),
+				array(
+					'title'       => 'X',
+					'target'      => 't@example.com',
+					'replacement' => 'r@example.com',
+				),
 			),
-			'subject_pattern_pairs'            => array(
-				array( 'pattern' => 'Order', 'recipients' => 'o@example.com' ),
+			'subject_pattern_pairs'   => array(
+				array(
+					'pattern'    => 'Order',
+					'recipients' => 'o@example.com',
+				),
 			),
-			'email_blacklist'                  => array( 'b@example.com' ),
+			'email_blacklist'         => array( 'b@example.com' ),
 		);
 
 		$clean = $this->call_private( $this->router, 'sanitize_imported_settings', $data );
@@ -29,15 +36,21 @@ class Test_Import_Export extends EIR_Test_Case {
 	public function test_import_drops_invalid_entries() {
 		$data = array(
 			'email_replacement_pairs' => array(
-				array( 'target' => 'valid@example.com', 'replacement' => 'r@example.com' ),
+				array(
+					'target'      => 'valid@example.com',
+					'replacement' => 'r@example.com',
+				),
 				array( 'target' => '' ),               // No target -> dropped.
 				array( 'target' => 'not-an-email' ),   // Invalid -> dropped.
 			),
-			'subject_pattern_pairs'            => array(
-				array( 'pattern' => 'Order', 'recipients' => 'o@example.com' ),
+			'subject_pattern_pairs'   => array(
+				array(
+					'pattern'    => 'Order',
+					'recipients' => 'o@example.com',
+				),
 				array( 'pattern' => '' ),              // No pattern -> dropped.
 			),
-			'email_blacklist'                  => array( 'good@example.com', 'bad', '' ),
+			'email_blacklist'         => array( 'good@example.com', 'bad', '' ),
 		);
 
 		$clean = $this->call_private( $this->router, 'sanitize_imported_settings', $data );
@@ -56,7 +69,11 @@ class Test_Import_Export extends EIR_Test_Case {
 	public function test_export_then_import_round_trip() {
 		$settings = array(
 			'email_replacement_pairs' => array(
-				array( 'title' => 'Round trip', 'target' => 'a@example.com', 'replacement' => 'b@example.com' ),
+				array(
+					'title'       => 'Round trip',
+					'target'      => 'a@example.com',
+					'replacement' => 'b@example.com',
+				),
 			),
 		);
 

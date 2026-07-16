@@ -86,7 +86,10 @@ class Test_Ajax_Usage extends WP_Ajax_UnitTestCase {
 			self::OPTION,
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't@example.com', 'replacement' => 'found@example.com' ),
+					array(
+						'target'      => 't@example.com',
+						'replacement' => 'found@example.com',
+					),
 				),
 			)
 		);

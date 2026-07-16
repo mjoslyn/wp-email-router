@@ -31,8 +31,16 @@ class Test_Sanitize_Settings extends EIR_Test_Case {
 		$out = $this->router->sanitize_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'title' => 'Good', 'target' => 'a@example.com', 'replacement' => 'b@example.com' ),
-					array( 'title' => 'Bad', 'target' => '', 'replacement' => 'c@example.com' ),
+					array(
+						'title'       => 'Good',
+						'target'      => 'a@example.com',
+						'replacement' => 'b@example.com',
+					),
+					array(
+						'title'       => 'Bad',
+						'target'      => '',
+						'replacement' => 'c@example.com',
+					),
 				),
 			)
 		);
@@ -46,7 +54,10 @@ class Test_Sanitize_Settings extends EIR_Test_Case {
 		$out = $this->router->sanitize_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'not-an-email', 'replacement' => 'b@example.com' ),
+					array(
+						'target'      => 'not-an-email',
+						'replacement' => 'b@example.com',
+					),
 				),
 			)
 		);
@@ -58,8 +69,14 @@ class Test_Sanitize_Settings extends EIR_Test_Case {
 		$out = $this->router->sanitize_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'o@example.com' ),
-					array( 'pattern' => '', 'recipients' => 'x@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'o@example.com',
+					),
+					array(
+						'pattern'    => '',
+						'recipients' => 'x@example.com',
+					),
 				),
 			)
 		);
@@ -121,7 +138,10 @@ class Test_Sanitize_Settings extends EIR_Test_Case {
 		$out = $this->router->sanitize_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'a@example.com', 'replacement' => 'b@example.com' ),
+					array(
+						'target'      => 'a@example.com',
+						'replacement' => 'b@example.com',
+					),
 				),
 			)
 		);

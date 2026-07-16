@@ -12,13 +12,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'new@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'new@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'old@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'old@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'new@example.com', $args['to'] );
@@ -28,13 +34,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'a@example.com,b@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'a@example.com,b@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'old@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'old@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'a@example.com,b@example.com', $args['to'] );
@@ -44,13 +56,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'new@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'new@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => array( 'old@example.com' ), 'subject' => 'Hello' )
+			array(
+				'to'      => array( 'old@example.com' ),
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'new@example.com', $args['to'] );
@@ -60,13 +78,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'new@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'new@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'someone-else@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'someone-else@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'someone-else@example.com', $args['to'] );
@@ -76,14 +100,20 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'keep@example.com,block@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'keep@example.com,block@example.com',
+					),
 				),
-				'email_blacklist'                  => array( 'block@example.com' ),
+				'email_blacklist'         => array( 'block@example.com' ),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'old@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'old@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertContains( 'keep@example.com', (array) $args['to'] );
@@ -94,13 +124,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'orders@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'orders@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'New Order #42' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'New Order #42',
+			)
 		);
 
 		$this->assertSame( array( 'orders@example.com' ), $args['to'] );
@@ -110,13 +146,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'invoice', 'recipients' => 'billing@example.com' ),
+					array(
+						'pattern'    => 'invoice',
+						'recipients' => 'billing@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'Your INVOICE is ready' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'Your INVOICE is ready',
+			)
 		);
 
 		$this->assertSame( array( 'billing@example.com' ), $args['to'] );
@@ -126,13 +168,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'orders@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'orders@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'Just saying hi' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'Just saying hi',
+			)
 		);
 
 		$this->assertSame( 'someone@example.com', $args['to'] );
@@ -142,7 +190,10 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'orders@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'orders@example.com',
+					),
 				),
 			)
 		);
@@ -156,15 +207,27 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'one@example.com', 'replacement' => 'r1@example.com' ),
-					array( 'target' => 'two@example.com', 'replacement' => 'r2@example.com' ),
-					array( 'target' => 'three@example.com', 'replacement' => 'r3@example.com' ),
+					array(
+						'target'      => 'one@example.com',
+						'replacement' => 'r1@example.com',
+					),
+					array(
+						'target'      => 'two@example.com',
+						'replacement' => 'r2@example.com',
+					),
+					array(
+						'target'      => 'three@example.com',
+						'replacement' => 'r3@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'two@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'two@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'r2@example.com', $args['to'] );
@@ -174,13 +237,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => '' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => '',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_emails(
-			array( 'to' => 'old@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'old@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		// With no replacement configured the original recipient is left in place.
@@ -189,7 +258,10 @@ class Test_Email_Replacement extends EIR_Test_Case {
 
 	public function test_no_replacement_rules_is_a_no_op() {
 		$args = $this->router->replace_emails(
-			array( 'to' => 'someone@example.com', 'subject' => 'Hello' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'someone@example.com', $args['to'] );
@@ -199,14 +271,20 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'old@example.com', 'replacement' => 'dup@example.com' ),
+					array(
+						'target'      => 'old@example.com',
+						'replacement' => 'dup@example.com',
+					),
 				),
 			)
 		);
 
 		// Both addresses map to the same replacement; email_router_unique_flatten dedupes them.
 		$args = $this->router->replace_emails(
-			array( 'to' => array( 'old@example.com', 'old@example.com' ), 'subject' => 'Hello' )
+			array(
+				'to'      => array( 'old@example.com', 'old@example.com' ),
+				'subject' => 'Hello',
+			)
 		);
 
 		$this->assertSame( 'dup@example.com', $args['to'] );
@@ -216,13 +294,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => '' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => '',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'New Order #42' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'New Order #42',
+			)
 		);
 
 		$this->assertSame( 'someone@example.com', $args['to'] );
@@ -232,13 +316,19 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'a@example.com, b@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'a@example.com, b@example.com',
+					),
 				),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'New Order' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'New Order',
+			)
 		);
 
 		$this->assertSame( array( 'a@example.com', 'b@example.com' ), array_values( $args['to'] ) );
@@ -248,14 +338,20 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'keep@example.com,block@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'keep@example.com,block@example.com',
+					),
 				),
 				'email_blacklist'       => array( 'block@example.com' ),
 			)
 		);
 
 		$args = $this->router->replace_by_subject(
-			array( 'to' => 'someone@example.com', 'subject' => 'New Order' )
+			array(
+				'to'      => 'someone@example.com',
+				'subject' => 'New Order',
+			)
 		);
 
 		$this->assertContains( 'keep@example.com', (array) $args['to'] );

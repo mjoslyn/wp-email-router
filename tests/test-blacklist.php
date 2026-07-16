@@ -8,7 +8,10 @@
 class Test_Blacklist extends EIR_Test_Case {
 
 	public function test_no_blacklist_returns_args_unchanged() {
-		$args = array( 'to' => 'a@example.com', 'subject' => 'Hi' );
+		$args = array(
+			'to'      => 'a@example.com',
+			'subject' => 'Hi',
+		);
 
 		$result = $this->call_private( $this->router, 'apply_blacklist', $args );
 

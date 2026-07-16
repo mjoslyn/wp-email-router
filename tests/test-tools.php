@@ -12,9 +12,18 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't1@example.com', 'replacement' => 'a@example.com,x@example.com' ),
-					array( 'target' => 't2@example.com', 'replacement' => 'x@example.com' ),
-					array( 'target' => 't3@example.com', 'replacement' => 'b@example.com' ),
+					array(
+						'target'      => 't1@example.com',
+						'replacement' => 'a@example.com,x@example.com',
+					),
+					array(
+						'target'      => 't2@example.com',
+						'replacement' => 'x@example.com',
+					),
+					array(
+						'target'      => 't3@example.com',
+						'replacement' => 'b@example.com',
+					),
 				),
 			)
 		);
@@ -33,7 +42,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't@example.com', 'replacement' => 'Mixed@Example.com' ),
+					array(
+						'target'      => 't@example.com',
+						'replacement' => 'Mixed@Example.com',
+					),
 				),
 			)
 		);
@@ -47,7 +59,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't@example.com', 'replacement' => 'a@example.com' ),
+					array(
+						'target'      => 't@example.com',
+						'replacement' => 'a@example.com',
+					),
 				),
 			)
 		);
@@ -61,7 +76,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 'shared@example.com', 'replacement' => 'shared@example.com' ),
+					array(
+						'target'      => 'shared@example.com',
+						'replacement' => 'shared@example.com',
+					),
 				),
 			)
 		);
@@ -77,7 +95,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't@example.com', 'replacement' => 'recipient@example.com' ),
+					array(
+						'target'      => 't@example.com',
+						'replacement' => 'recipient@example.com',
+					),
 				),
 			)
 		);
@@ -92,7 +113,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'subject_pattern_pairs' => array(
-					array( 'pattern' => 'Order', 'recipients' => 'team@example.com' ),
+					array(
+						'pattern'    => 'Order',
+						'recipients' => 'team@example.com',
+					),
 				),
 			)
 		);
@@ -139,7 +163,10 @@ class Test_Tools extends EIR_Test_Case {
 
 	public function test_find_usage_locates_user_account() {
 		$user_id = self::factory()->user->create(
-			array( 'user_email' => 'person@example.com', 'role' => 'editor' )
+			array(
+				'user_email' => 'person@example.com',
+				'role'       => 'editor',
+			)
 		);
 
 		$results  = $this->call_private( $this->router, 'find_email_usage', 'person@example.com' );
@@ -160,7 +187,10 @@ class Test_Tools extends EIR_Test_Case {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
-					array( 'target' => 't@example.com', 'replacement' => 'recipient@example.com' ),
+					array(
+						'target'      => 't@example.com',
+						'replacement' => 'recipient@example.com',
+					),
 				),
 			)
 		);
