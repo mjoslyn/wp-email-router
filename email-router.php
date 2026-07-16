@@ -1,6 +1,15 @@
 <?php
-
 /**
+ * Email Router: intercept outgoing wp_mail and rewrite its recipients.
+ *
+ * Extracted from the hello-elementor-child theme (inc/email-interceptor.php), which
+ * stored its rules under email_interceptor_replacer_settings. This plugin uses a
+ * different option key, so a site coming from the theme version starts with an empty
+ * rule set — see README.md to carry the old rules across.
+ *
+ * @package Email_Router
+ *
+ * @wordpress-plugin
  * Plugin Name: Email Router
  * Description: Intercepts outgoing emails and routes/replaces recipients based on target addresses, subject patterns, and a blacklist. Adds a Tools > Email Router admin page.
  * Version: 1.0.0
@@ -16,24 +25,35 @@
  * it under the terms of the GNU General Public License as published by the Free
  * Software Foundation, either version 2 of the License, or (at your option) any
  * later version. See the bundled LICENSE file for the full text.
- *
- * Extracted from the hello-elementor-child theme (inc/email-interceptor.php), which
- * stored its rules under email_interceptor_replacer_settings. This plugin uses a
- * different option key, so a site coming from the theme version starts with an empty
- * rule set — see README.md to carry the old rules across.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Rewrites the recipients of outgoing wp_mail and renders the admin UI.
+ */
 class EmailRouter {
 
+	/**
+	 * Singleton instance.
+	 *
+	 * @var EmailRouter|null
+	 */
 	private static $instance = null;
-	private $option_name     = 'email_router_settings';
 
+	/**
+	 * Name of the option holding every routing rule.
+	 *
+	 * @var string
+	 */
+	private $option_name = 'email_router_settings';
+
+	/**
+	 * Registers the mail filters and admin hooks.
+	 */
 	private function __construct() {
-		// Hook into WordPress
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'settings_init' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
@@ -48,7 +68,7 @@ class EmailRouter {
 	 * Enqueue admin scripts and styles
 	 */
 	public function enqueue_admin_scripts( $hook ) {
-		if ( $hook !== 'tools_page_email_router' ) {
+		if ( 'tools_page_email_router' !== $hook ) {
 			return;
 		}
 
@@ -528,11 +548,11 @@ class EmailRouter {
 	private function render_email_pair_row( $index, $pair ) {
 		echo '<tr class="email-pair-row">';
 		echo '<td class="column-title">';
-		echo '<input type="text" name="' . $this->option_name . '[email_replacement_pairs][' . $index . '][title]" ';
+		echo '<input type="text" name="' . esc_attr( $this->option_name ) . '[email_replacement_pairs][' . esc_attr( $index ) . '][title]" ';
 		echo 'value="' . esc_attr( $pair['title'] ?? '' ) . '" placeholder="Rule title" class="regular-text">';
 		echo '</td>';
 		echo '<td class="column-target">';
-		echo '<input type="email" name="' . $this->option_name . '[email_replacement_pairs][' . $index . '][target]" ';
+		echo '<input type="email" name="' . esc_attr( $this->option_name ) . '[email_replacement_pairs][' . esc_attr( $index ) . '][target]" ';
 		echo 'value="' . esc_attr( $pair['target'] ?? '' ) . '" placeholder="user@example.com" class="regular-text" required>';
 		if ( ! empty( $pair['target'] ) ) {
 			echo '<div style="margin-top:5px;">';
@@ -544,7 +564,7 @@ class EmailRouter {
 		echo '</td>';
 		echo '<td class="column-replacement">';
 		$this->render_email_tags_field(
-			$this->option_name . '[email_replacement_pairs][' . $index . '][replacement]',
+			$this->option_name . '[email_replacement_pairs][' . esc_attr( $index ) . '][replacement]',
 			$pair['replacement'] ?? ''
 		);
 		echo '</td>';
@@ -582,7 +602,7 @@ class EmailRouter {
 	private function render_subject_pair_row( $index, $pair ) {
 		echo '<tr class="subject-pair-row">';
 		echo '<td class="column-pattern">';
-		echo '<input type="text" name="' . $this->option_name . '[subject_pattern_pairs][' . $index . '][pattern]" ';
+		echo '<input type="text" name="' . esc_attr( $this->option_name ) . '[subject_pattern_pairs][' . esc_attr( $index ) . '][pattern]" ';
 		echo 'value="' . esc_attr( $pair['pattern'] ?? '' ) . '" placeholder="*Order* or Payment* or *Invoice*" class="regular-text" required>';
 		if ( ! empty( $pair['pattern'] ) ) {
 			echo '<div style="margin-top: 5px;"><span class="pattern-preview">' . esc_html( $pair['pattern'] ) . '</span></div>';
@@ -590,7 +610,7 @@ class EmailRouter {
 		echo '</td>';
 		echo '<td class="column-recipients">';
 		$this->render_email_tags_field(
-			$this->option_name . '[subject_pattern_pairs][' . $index . '][recipients]',
+			$this->option_name . '[subject_pattern_pairs][' . esc_attr( $index ) . '][recipients]',
 			$pair['recipients'] ?? ''
 		);
 		echo '</td>';
@@ -609,7 +629,7 @@ class EmailRouter {
 	private function render_blacklist_row( $index, $email ) {
 		echo '<tr class="blacklist-row">';
 		echo '<td class="column-email">';
-		echo '<input type="email" name="' . $this->option_name . '[email_blacklist][' . $index . ']" ';
+		echo '<input type="email" name="' . esc_attr( $this->option_name ) . '[email_blacklist][' . esc_attr( $index ) . ']" ';
 		echo 'value="' . esc_attr( $email ) . '" placeholder="blocked@example.com" class="regular-text" required>';
 		echo '</td>';
 		echo '<td class="column-status">';
@@ -622,7 +642,7 @@ class EmailRouter {
 	}
 
 	public static function get_instance() {
-		if ( self::$instance == null ) {
+		if ( null === self::$instance ) {
 			self::$instance = new EmailRouter();
 		}
 
@@ -759,22 +779,27 @@ class EmailRouter {
 	}
 
 	public function settings_section_callback() {
-		echo __( 'Set up pairs of target email addresses and the replacement email addresses that should replace them.', 'email-router' );
+		echo esc_html__( 'Set up pairs of target email addresses and the replacement email addresses that should replace them.', 'email-router' );
 	}
 
 	public function subject_section_callback() {
-		echo __( 'Set up pairs of subject patterns and the email addresses that should receive matching emails. Use * for wildcards.', 'email-router' );
+		echo esc_html__( 'Set up pairs of subject patterns and the email addresses that should receive matching emails. Use * for wildcards.', 'email-router' );
 	}
 
 	public function blacklist_section_callback() {
-		echo __( 'Enter email addresses that should be completely blocked from receiving any emails. These addresses will be removed from all outgoing emails.', 'email-router' );
+		echo esc_html__( 'Enter email addresses that should be completely blocked from receiving any emails. These addresses will be removed from all outgoing emails.', 'email-router' );
 	}
 
 	public function options_page() {
-		$tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'replacements';
+		// A tab switch is navigation, not a state change, so there is nothing to nonce.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'replacements';
+		if ( ! in_array( $tab, array( 'replacements', 'subjects', 'blacklist', 'tools' ), true ) ) {
+			$tab = 'replacements';
+		}
 
 		echo '<div class="wrap">';
-		echo '<h1 class="wp-heading-inline">Email Router Management</h1>';
+		echo '<h1 class="wp-heading-inline">' . esc_html__( 'Email Router Management', 'email-router' ) . '</h1>';
 		echo '<hr class="wp-header-end">';
 
 		$this->render_tabs( $tab );
@@ -782,7 +807,7 @@ class EmailRouter {
 
 		// The Tools tab manages its own forms (bulk actions + lookups), not the
 		// Settings API options form.
-		if ( $tab === 'tools' ) {
+		if ( 'tools' === $tab ) {
 			$this->render_tools_section();
 			echo '</div>';
 			return;
@@ -835,8 +860,8 @@ class EmailRouter {
 		foreach ( $tabs as $tab_id => $tab_data ) {
 			$class = ( $tab_id === $current_tab ) ? 'nav-tab nav-tab-active' : 'nav-tab';
 			$url   = admin_url( 'tools.php?page=email_router&tab=' . $tab_id );
-			echo '<a href="' . esc_url( $url ) . '" class="' . $class . '">';
-			echo '<span class="dashicons ' . $tab_data['icon'] . '" style="margin-right: 5px; vertical-align: middle; margin-top: -2px;"></span>';
+			echo '<a href="' . esc_url( $url ) . '" class="' . esc_attr( $class ) . '">';
+			echo '<span class="dashicons ' . esc_attr( $tab_data['icon'] ) . '" style="margin-right: 5px; vertical-align: middle; margin-top: -2px;"></span>';
 			echo esc_html( $tab_data['name'] );
 			echo '</a>';
 		}
@@ -891,7 +916,7 @@ class EmailRouter {
 					'Removed %s from %d replacement rule%s.',
 					$email,
 					$count,
-					$count === 1 ? '' : 's'
+					1 === $count ? '' : 's'
 				);
 			} else {
 				$remove_notice      = 'Please enter a valid email address.';
@@ -904,8 +929,13 @@ class EmailRouter {
 		$import_notice_type = 'success';
 		if ( isset( $_POST['email_router_import_submit'] ) ) {
 			check_admin_referer( 'email_router_import' );
-			if ( ! empty( $_FILES['email_router_import_file']['tmp_name'] ) && is_uploaded_file( $_FILES['email_router_import_file']['tmp_name'] ) ) {
-				$raw  = file_get_contents( $_FILES['email_router_import_file']['tmp_name'] );
+			$upload = isset( $_FILES['email_router_import_file']['tmp_name'] )
+				? sanitize_text_field( wp_unslash( $_FILES['email_router_import_file']['tmp_name'] ) )
+				: '';
+			if ( '' !== $upload && is_uploaded_file( $upload ) ) {
+				// Reading a local PHP upload, not a remote URL, so wp_remote_get() does not apply.
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+				$raw  = file_get_contents( $upload );
 				$data = json_decode( $raw, true );
 				if ( json_last_error() === JSON_ERROR_NONE && is_array( $data ) ) {
 					update_option( $this->option_name, $this->sanitize_imported_settings( $data ) );
@@ -928,7 +958,7 @@ class EmailRouter {
 				$emails[ strtolower( $pair['target'] ) ] = $pair['target'];
 			}
 			foreach ( array_map( 'trim', explode( ',', $pair['replacement'] ?? '' ) ) as $recipient ) {
-				if ( $recipient !== '' ) {
+				if ( '' !== $recipient ) {
 					$emails[ strtolower( $recipient ) ] = $recipient;
 				}
 			}
@@ -941,7 +971,7 @@ class EmailRouter {
 		echo '<div class="email-router-section">';
 		echo '<h2>Remove an Email From All Replacements</h2>';
 		echo '<div style="padding: 15px 20px;">';
-		if ( $remove_notice !== '' ) {
+		if ( '' !== $remove_notice ) {
 			echo '<div class="notice notice-' . esc_attr( $remove_notice_type ) . ' inline" style="margin: 0 0 12px;"><p>' . esc_html( $remove_notice ) . '</p></div>';
 		}
 		echo '<p style="margin-top: 0; color: #666;">Removes the address from the recipient list of every replacement rule. Target addresses are not changed.</p>';
@@ -1009,7 +1039,7 @@ class EmailRouter {
 		echo '<div class="email-router-section">';
 		echo '<h2>Export / Import Settings</h2>';
 		echo '<div style="padding: 15px 20px;">';
-		if ( $import_notice !== '' ) {
+		if ( '' !== $import_notice ) {
 			echo '<div class="notice notice-' . esc_attr( $import_notice_type ) . ' inline" style="margin: 0 0 12px;"><p>' . esc_html( $import_notice ) . '</p></div>';
 		}
 		echo '<p style="margin-top: 0; color: #666;">Download all router settings (replacements, subject patterns, and blacklist) as a JSON file, or restore them from a previously exported file. Importing replaces all current settings.</p>';
@@ -1087,7 +1117,7 @@ class EmailRouter {
 		if ( ! empty( $data['subject_pattern_pairs'] ) && is_array( $data['subject_pattern_pairs'] ) ) {
 			foreach ( $data['subject_pattern_pairs'] as $pair ) {
 				$pattern = sanitize_text_field( $pair['pattern'] ?? '' );
-				if ( $pattern === '' ) {
+				if ( '' === $pattern ) {
 					continue;
 				}
 				$clean['subject_pattern_pairs'][] = array(
@@ -1210,14 +1240,14 @@ class EmailRouter {
 
 		foreach ( ( $options['email_replacement_pairs'] ?? array() ) as $pair ) {
 			foreach ( array_map( 'trim', explode( ',', $pair['replacement'] ?? '' ) ) as $email ) {
-				if ( $email !== '' ) {
+				if ( '' !== $email ) {
 					$recipients[ strtolower( $email ) ] = $email;
 				}
 			}
 		}
 		foreach ( ( $options['subject_pattern_pairs'] ?? array() ) as $pair ) {
 			foreach ( array_map( 'trim', explode( ',', $pair['recipients'] ?? '' ) ) as $email ) {
-				if ( $email !== '' ) {
+				if ( '' !== $email ) {
 					$recipients[ strtolower( $email ) ] = $email;
 				}
 			}
@@ -1527,7 +1557,7 @@ JS;
     (function($) {
       $(document).ready(function() {
         var index = ' . (int) $count . ';
-        var fieldBase = "' . $this->option_name . '[email_replacement_pairs]";
+        var fieldBase = "' . esc_js( $this->option_name ) . '[email_replacement_pairs]";
 
         function generateFakeEmail() {
           var randomString = Math.random().toString(36).slice(2, 12);
@@ -1615,7 +1645,7 @@ JS;
     (function($) {
       $(document).ready(function() {
         var index = ' . (int) $count . ';
-        var fieldBase = "' . $this->option_name . '[subject_pattern_pairs]";
+        var fieldBase = "' . esc_js( $this->option_name ) . '[subject_pattern_pairs]";
 
         function escAttr(value) {
           return String(value == null ? "" : value)
@@ -1693,13 +1723,13 @@ JS;
 		echo '<script type="text/javascript">
     (function($) {
       $(document).ready(function() {
-        var index = ' . $count . ';
+        var index = ' . absint( $count ) . ';
         
         $("#add-blacklist-email").on("click", function(e) {
           e.preventDefault();
           var newRow = `<tr class="blacklist-row">
             <td class="column-email">
-              <input type="email" name="' . $this->option_name . '[email_blacklist][${index}]" 
+              <input type="email" name="' . esc_attr( $this->option_name ) . '[email_blacklist][${index}]" 
                 placeholder="blocked@example.com" class="regular-text" required>
             </td>
             <td class="column-status">
@@ -1738,9 +1768,9 @@ JS;
 	<div id="email-pairs">
 		<?php if ( empty( $pairs ) ) : ?>
 		<div class="email-pair">
-			<input type="email" name="<?php echo $this->option_name; ?>[email_replacement_pairs][0][target]"
+			<input type="email" name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][0][target]"
 			placeholder="Target Email Address" style="width: 40%;" />
-			<input type="text" name="<?php echo $this->option_name; ?>[email_replacement_pairs][0][replacement]"
+			<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][0][replacement]"
 			placeholder="Replacement Emails (comma-separated)" style="width: 50%;" />
 			<button class="remove-email-pair button-secondary" style="margin-left: 5px;">Remove</button>
 		</div>
@@ -1748,10 +1778,10 @@ JS;
 			<?php foreach ( $pairs as $index => $pair ) : ?>
 			<div class="email-pair" style="margin-top:0.5rem">
 			<input type="email"
-				name="<?php echo $this->option_name; ?>[email_replacement_pairs][<?php echo $index; ?>][target]"
+				name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][<?php echo esc_attr( $index ); ?>][target]"
 				value="<?php echo esc_attr( $pair['target'] ); ?>" placeholder="Target Email Address" style="width: 40%;" />
 			<input type="text"
-				name="<?php echo $this->option_name; ?>[email_replacement_pairs][<?php echo $index; ?>][replacement]"
+				name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][<?php echo esc_attr( $index ); ?>][replacement]"
 				value="<?php echo esc_attr( $pair['replacement'] ); ?>" placeholder="Replacement Emails (comma-separated)"
 				style="width: 50%;" />
 			<button class="remove-email-pair button-secondary" style="margin-left: 5px;">Remove</button>
@@ -1771,9 +1801,9 @@ JS;
 			$('#add-email-pair').on('click', function(e) {
 			e.preventDefault();
 			var newPair = `<div class="email-pair">
-																									<input type="email" name="<?php echo $this->option_name; ?>[email_replacement_pairs][${index}][target]" 
+																									<input type="email" name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][${index}][target]" 
 																									placeholder="Target Email Address" style="width: 40%;" />
-																									<input type="text" name="<?php echo $this->option_name; ?>[email_replacement_pairs][${index}][replacement]" 
+																									<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[email_replacement_pairs][${index}][replacement]" 
 																									placeholder="Replacement Emails (comma-separated)" style="width: 50%;" />
 																									<button class="remove-email-pair button-secondary" style="margin-left: 5px;">Remove</button>
 																								</div>`;
@@ -1799,20 +1829,20 @@ JS;
 	<div id="subject-pairs">
 		<?php if ( empty( $pairs ) ) : ?>
 		<div class="subject-pair">
-			<input type="text" name="<?php echo $this->option_name; ?>[subject_pattern_pairs][0][pattern]"
+			<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][0][pattern]"
 			placeholder="Subject Pattern (e.g. *Order*)" style="width: 40%;" />
-			<input type="text" name="<?php echo $this->option_name; ?>[subject_pattern_pairs][0][recipients]"
+			<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][0][recipients]"
 			placeholder="Recipient Emails (comma-separated)" style="width: 50%;" />
 			<button class="remove-subject-pair button-secondary" style="margin-left: 5px;">Remove</button>
 		</div>
 		<?php else : ?>
 			<?php foreach ( $pairs as $index => $pair ) : ?>
 			<div class="subject-pair" style="margin-top:0.5rem">
-			<input type="text" name="<?php echo $this->option_name; ?>[subject_pattern_pairs][<?php echo $index; ?>][pattern]"
+			<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][<?php echo esc_attr( $index ); ?>][pattern]"
 				value="<?php echo esc_attr( $pair['pattern'] ); ?>" placeholder="Subject Pattern (e.g. *Order*)"
 				style="width: 40%;" />
 			<input type="text"
-				name="<?php echo $this->option_name; ?>[subject_pattern_pairs][<?php echo $index; ?>][recipients]"
+				name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][<?php echo esc_attr( $index ); ?>][recipients]"
 				value="<?php echo esc_attr( $pair['recipients'] ); ?>" placeholder="Recipient Emails (comma-separated)"
 				style="width: 50%;" />
 			<button class="remove-subject-pair button-secondary" style="margin-left: 5px;">Remove</button>
@@ -1832,9 +1862,9 @@ JS;
 			$('#add-subject-pair').on('click', function(e) {
 			e.preventDefault();
 			var newPair = `<div class="subject-pair">
-																									<input type="text" name="<?php echo $this->option_name; ?>[subject_pattern_pairs][${subjectIndex}][pattern]" 
+																									<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][${subjectIndex}][pattern]" 
 																									placeholder="Subject Pattern (e.g. *Order*)" style="width: 40%;" />
-																									<input type="text" name="<?php echo $this->option_name; ?>[subject_pattern_pairs][${subjectIndex}][recipients]"
+																									<input type="text" name="<?php echo esc_attr( $this->option_name ); ?>[subject_pattern_pairs][${subjectIndex}][recipients]"
 																									placeholder="Recipient Emails (comma-separated)" style="width: 50%;" />
 																									<button class="remove-subject-pair button-secondary" style="margin-left: 5px;">Remove</button>
 																								</div>`;
@@ -1860,14 +1890,14 @@ JS;
 	<div id="blacklist-emails">
 		<?php if ( empty( $blacklist ) ) : ?>
 		<div class="blacklist-email">
-			<input type="email" name="<?php echo $this->option_name; ?>[email_blacklist][0]"
+			<input type="email" name="<?php echo esc_attr( $this->option_name ); ?>[email_blacklist][0]"
 			placeholder="Email Address to Blacklist" style="width: 70%;" />
 			<button class="remove-blacklist-email button-secondary" style="margin-left: 5px;">Remove</button>
 		</div>
 		<?php else : ?>
 			<?php foreach ( $blacklist as $index => $email ) : ?>
 			<div class="blacklist-email" style="margin-top:0.5rem">
-			<input type="email" name="<?php echo $this->option_name; ?>[email_blacklist][<?php echo $index; ?>]"
+			<input type="email" name="<?php echo esc_attr( $this->option_name ); ?>[email_blacklist][<?php echo esc_attr( $index ); ?>]"
 				value="<?php echo esc_attr( $email ); ?>" placeholder="Email Address to Blacklist" style="width: 70%;" />
 			<button class="remove-blacklist-email button-secondary" style="margin-left: 5px;">Remove</button>
 			</div>
@@ -1886,7 +1916,7 @@ JS;
 			$('#add-blacklist-email').on('click', function(e) {
 			e.preventDefault();
 			var newEmail = `<div class="blacklist-email">
-																									<input type="email" name="<?php echo $this->option_name; ?>[email_blacklist][${blacklistIndex}]" 
+																									<input type="email" name="<?php echo esc_attr( $this->option_name ); ?>[email_blacklist][${blacklistIndex}]" 
 																									placeholder="Email Address to Blacklist" style="width: 70%;" />
 																									<button class="remove-blacklist-email button-secondary" style="margin-left: 5px;">Remove</button>
 																								</div>`;
@@ -1915,10 +1945,12 @@ JS;
 			if ( ! empty( $target_email ) && ! empty( $replacement_emails ) ) {
 				$emls = str_replace( $target_email, $replacement_emails, $args['to'] );
 				if ( is_array( $emls ) ) {
-					$emls = email_router_unique_flatten( $emls );
+					$emls = self::unique_flatten( $emls );
 					$emls = implode( ',', $emls );
 				}
 				$args['to'] = $emls;
+				// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
+				// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 				do_action( 'qm/debug', $args['to'] );
 			}
 		}
@@ -1948,10 +1980,12 @@ JS;
 			if ( preg_match( '/' . $pattern . '/i', $args['subject'] ) ) {
 				// Split recipients by comma and clean them
 				$new_recipients = array_map( 'trim', explode( ',', $recipients ) );
-				// Merge with existing recipients if they exist
+				// A matching pattern replaces the recipient list outright.
 				$args['to'] = array_unique( $new_recipients );
 
 				do_action(
+					// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
+					// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 					'qm/debug',
 					array(
 						'subject'         => $args['subject'],
@@ -1988,16 +2022,18 @@ JS;
 		$filtered_recipients = array_filter(
 			$recipients,
 			function ( $email ) use ( $blacklist ) {
-				return ! in_array( trim( $email ), $blacklist );
+				return ! in_array( trim( $email ), $blacklist, true );
 			}
 		);
 
-		// Update the args with filtered recipients
+		// Update the args with filtered recipients.
 		$args['to'] = array_values( $filtered_recipients );
 
-		// Log blacklist filtering if any emails were removed
+		// Log blacklist filtering if any emails were removed.
 		if ( count( $recipients ) !== count( $filtered_recipients ) ) {
 			do_action(
+				// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
+				// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 				'qm/debug',
 				array(
 					'blacklist_applied'   => true,
@@ -2068,7 +2104,7 @@ JS;
 			$results[] = array(
 				'source'   => 'WordPress',
 				'location' => 'User account: ' . $user->user_login,
-				'detail'   => 'Roles: ' . ( implode( ', ', $user->roles ) ?: 'none' ),
+				'detail'   => 'Roles: ' . ( empty( $user->roles ) ? 'none' : implode( ', ', $user->roles ) ),
 				'link'     => admin_url( 'user-edit.php?user_id=' . $user->ID ),
 			);
 		}
@@ -2139,7 +2175,8 @@ JS;
 
 		// --- This router's own rules ---
 		$rules_link = admin_url( 'tools.php?page=email_router&tab=replacements' );
-		foreach ( ( $options = get_option( $this->option_name, array() ) )['email_replacement_pairs'] ?? array() as $pair ) {
+		$options    = get_option( $this->option_name, array() );
+		foreach ( $options['email_replacement_pairs'] ?? array() as $pair ) {
 			if ( $this->email_in_list( $email, $pair['replacement'] ?? '' ) ) {
 				$results[] = array(
 					'source'   => 'Email Router',
@@ -2176,34 +2213,35 @@ JS;
 	/**
 	 * Whether $email appears as a literal entry in a comma-separated recipient string.
 	 *
-	 * @param string $email Already-lowercased address to look for.
-	 * @param string $list  Comma-separated list of addresses (may include merge tags).
+	 * @param string $email         Already-lowercased address to look for.
+	 * @param string $address_list  Comma-separated list of addresses (may include merge tags).
 	 * @return bool
 	 */
-	private function email_in_list( $email, $list ) {
-		foreach ( array_map( 'trim', explode( ',', (string) $list ) ) as $candidate ) {
+	private function email_in_list( $email, $address_list ) {
+		foreach ( array_map( 'trim', explode( ',', (string) $address_list ) ) as $candidate ) {
 			if ( strtolower( $candidate ) === $email ) {
 				return true;
 			}
 		}
 		return false;
 	}
-}
 
-
-// Helper function to flatten arrays (in case of nested arrays)
-if ( ! function_exists( 'email_router_unique_flatten' ) ) {
-	function email_router_unique_flatten( $array ) {
-		$return = array();
+	/**
+	 * Flattens a possibly-nested array of addresses and drops duplicates.
+	 *
+	 * @param array $addresses Addresses, possibly nested.
+	 * @return array Unique, flattened addresses.
+	 */
+	public static function unique_flatten( $addresses ) {
+		$flattened = array();
 		array_walk_recursive(
-			$array,
-			function ( $a ) use ( &$return ) {
-				$return[] = $a;
+			$addresses,
+			function ( $address ) use ( &$flattened ) {
+				$flattened[] = $address;
 			}
 		);
-		return array_unique( $return );
+		return array_unique( $flattened );
 	}
 }
 
-// Initialize the singleton instance
 EmailRouter::get_instance();

@@ -8,7 +8,7 @@
 class Test_Helpers extends EIR_Test_Case {
 
 	public function test_unique_flatten_flattens_nested_arrays() {
-		$result = email_router_unique_flatten( array( 'a@example.com', array( 'b@example.com', 'c@example.com' ) ) );
+		$result = EmailRouter::unique_flatten( array( 'a@example.com', array( 'b@example.com', 'c@example.com' ) ) );
 
 		$this->assertSame(
 			array( 'a@example.com', 'b@example.com', 'c@example.com' ),
@@ -17,7 +17,7 @@ class Test_Helpers extends EIR_Test_Case {
 	}
 
 	public function test_unique_flatten_removes_duplicates() {
-		$result = email_router_unique_flatten( array( 'a@example.com', array( 'a@example.com', 'b@example.com' ) ) );
+		$result = EmailRouter::unique_flatten( array( 'a@example.com', array( 'a@example.com', 'b@example.com' ) ) );
 
 		$this->assertSame(
 			array( 'a@example.com', 'b@example.com' ),

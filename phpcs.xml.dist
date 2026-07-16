@@ -37,8 +37,13 @@
 		</properties>
 	</rule>
 
-	<!-- Test files follow the WP test-suite conventions, not the plugin's. -->
+	<!--
+		The main file is the plugin bootstrap: WordPress expects it to be named for the
+		slug, not for the class it happens to contain. Test files follow the WP test-suite
+		naming conventions instead of the plugin's.
+	-->
 	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
+		<exclude-pattern>/email-router.php</exclude-pattern>
 		<exclude-pattern>/tests/*</exclude-pattern>
 	</rule>
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">

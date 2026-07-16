@@ -279,7 +279,7 @@ class Test_Email_Replacement extends EIR_Test_Case {
 			)
 		);
 
-		// Both addresses map to the same replacement; email_router_unique_flatten dedupes them.
+		// Both addresses map to the same replacement; unique_flatten() dedupes them.
 		$args = $this->router->replace_emails(
 			array(
 				'to'      => array( 'old@example.com', 'old@example.com' ),
