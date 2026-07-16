@@ -1,0 +1,16 @@
+{
+    "name": "mjoslyn/email-router",
+    "description": "Intercept outgoing WordPress emails and route or replace recipients based on target addresses, subject patterns, and a blacklist.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "yoast/phpunit-polyfills": "^2.0"
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

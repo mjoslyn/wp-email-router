@@ -1,0 +1,18 @@
+# Throwaway image for running the PHPUnit suite against the project's db-test
+# MySQL container. Matches the site's PHP 8.3 runtime and carries the tools
+# install-wp-tests.sh needs (subversion + a mysql client), which the host lacks.
+FROM php:8.3-cli
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        subversion \
+        default-mysql-client \
+        unzip \
+        git \
+        ca-certificates \
+    && docker-php-ext-install mysqli > /dev/null \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /plugin
