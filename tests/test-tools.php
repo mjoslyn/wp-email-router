@@ -6,6 +6,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers remove_email_from_replacements() and find_email_usage().
+ */
 class Test_Tools extends EIR_Test_Case {
 
 	public function test_remove_strips_email_from_all_recipient_lists() {

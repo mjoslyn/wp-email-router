@@ -60,12 +60,15 @@ class EmailRouter {
 		add_action( 'wp_ajax_email_router_usage', array( $this, 'ajax_usage' ) );
 		add_action( 'admin_post_email_router_export', array( $this, 'handle_export' ) );
 		add_action( 'init', array( $this, 'load_textdomain' ) );
-		add_filter( 'wp_mail', array( $this, 'replace_emails' ), 20 ); // Run after email replacement
+		// Priority 20: runs on the recipients replace_by_subject() leaves behind.
+		add_filter( 'wp_mail', array( $this, 'replace_emails' ), 20 );
 		add_filter( 'wp_mail', array( $this, 'replace_by_subject' ), 10 );
 	}
 
 	/**
-	 * Enqueue admin scripts and styles
+	 * Enqueues the admin JS and inline CSS on this plugin's screen only.
+	 *
+	 * @param string $hook Current admin page hook suffix.
 	 */
 	public function enqueue_admin_scripts( $hook ) {
 		if ( 'tools_page_email_router' !== $hook ) {
@@ -543,7 +546,10 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render individual email pair row
+	 * Renders one replacement rule row.
+	 *
+	 * @param int   $index Row index within the option array.
+	 * @param array $pair  Rule data: title, target, replacement.
 	 */
 	private function render_email_pair_row( $index, $pair ) {
 		echo '<tr class="email-pair-row">';
@@ -597,7 +603,10 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render individual subject pair row
+	 * Renders one subject-pattern row.
+	 *
+	 * @param int   $index Row index within the option array.
+	 * @param array $pair  Rule data: pattern, recipients.
 	 */
 	private function render_subject_pair_row( $index, $pair ) {
 		echo '<tr class="subject-pair-row">';
@@ -624,7 +633,10 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render individual blacklist row
+	 * Renders one blacklist row.
+	 *
+	 * @param int    $index Row index within the option array.
+	 * @param string $email Blacklisted address.
 	 */
 	private function render_blacklist_row( $index, $email ) {
 		echo '<tr class="blacklist-row">';
@@ -641,6 +653,11 @@ class EmailRouter {
 		echo '</tr>';
 	}
 
+	/**
+	 * Returns the singleton, creating it on first call.
+	 *
+	 * @return EmailRouter
+	 */
 	public static function get_instance() {
 		if ( null === self::$instance ) {
 			self::$instance = new EmailRouter();
@@ -656,6 +673,9 @@ class EmailRouter {
 		load_plugin_textdomain( 'email-router', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 	}
 
+	/**
+	 * Registers the Tools > Email Router page.
+	 */
 	public function add_admin_menu() {
 		add_management_page(
 			'Email Router',
@@ -666,6 +686,9 @@ class EmailRouter {
 		);
 	}
 
+	/**
+	 * Registers the setting, its sections, and its fields.
+	 */
 	public function settings_init() {
 		register_setting(
 			'emailRouter',
@@ -721,14 +744,24 @@ class EmailRouter {
 		);
 	}
 
+	/**
+	 * Sanitizes the whole option on save.
+	 *
+	 * Each tab posts only its own fields, so the incoming values are merged over the
+	 * stored option rather than replacing it — otherwise saving one tab would wipe the
+	 * others. Rules with an empty target/pattern are dropped.
+	 *
+	 * @param array $input Raw values from the Settings API.
+	 * @return array Sanitized option value.
+	 */
 	public function sanitize_settings( $input ) {
-		// Get existing options to preserve data from other tabs
+		// Get existing options to preserve data from other tabs.
 		$existing_options = get_option( $this->option_name, array() );
 
-		// Merge new input with existing options
+		// Merge new input with existing options.
 		$sanitized = array_merge( $existing_options, $input );
 
-		// Sanitize email pairs
+		// Sanitize email pairs.
 		if ( isset( $sanitized['email_replacement_pairs'] ) ) {
 			$sanitized['email_replacement_pairs'] = array_filter(
 				array_map(
@@ -747,7 +780,7 @@ class EmailRouter {
 			);
 		}
 
-		// Sanitize subject pattern pairs
+		// Sanitize subject pattern pairs.
 		if ( isset( $sanitized['subject_pattern_pairs'] ) ) {
 			$sanitized['subject_pattern_pairs'] = array_filter(
 				array_map(
@@ -765,7 +798,7 @@ class EmailRouter {
 			);
 		}
 
-		// Sanitize blacklist
+		// Sanitize blacklist.
 		if ( isset( $sanitized['email_blacklist'] ) ) {
 			$sanitized['email_blacklist'] = array_filter(
 				array_map( 'sanitize_email', $sanitized['email_blacklist'] ),
@@ -778,18 +811,30 @@ class EmailRouter {
 		return $sanitized;
 	}
 
+	/**
+	 * Describes the replacements section.
+	 */
 	public function settings_section_callback() {
 		echo esc_html__( 'Set up pairs of target email addresses and the replacement email addresses that should replace them.', 'email-router' );
 	}
 
+	/**
+	 * Describes the subject-patterns section.
+	 */
 	public function subject_section_callback() {
 		echo esc_html__( 'Set up pairs of subject patterns and the email addresses that should receive matching emails. Use * for wildcards.', 'email-router' );
 	}
 
+	/**
+	 * Describes the blacklist section.
+	 */
 	public function blacklist_section_callback() {
 		echo esc_html__( 'Enter email addresses that should be completely blocked from receiving any emails. These addresses will be removed from all outgoing emails.', 'email-router' );
 	}
 
+	/**
+	 * Renders the settings screen for the current tab.
+	 */
 	public function options_page() {
 		// A tab switch is navigation, not a state change, so there is nothing to nonce.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -834,7 +879,9 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render tabbed navigation
+	 * Renders the tab bar.
+	 *
+	 * @param string $current_tab Tab id currently being viewed.
 	 */
 	private function render_tabs( $current_tab ) {
 		$tabs = array(
@@ -869,7 +916,9 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render tab descriptions
+	 * Renders the blurb under the tab bar.
+	 *
+	 * @param string $current_tab Tab id currently being viewed.
 	 */
 	private function render_tab_description( $current_tab ) {
 		$descriptions = array(
@@ -1550,7 +1599,9 @@ JS;
 	}
 
 	/**
-	 * Add JavaScript for email pairs
+	 * Prints the replacements tab's inline JavaScript.
+	 *
+	 * @param int $count Number of rows already rendered; the next new row indexes from here.
 	 */
 	private function add_email_pairs_javascript( $count ) {
 		echo '<script type="text/javascript">
@@ -1638,7 +1689,9 @@ JS;
 	}
 
 	/**
-	 * Add JavaScript for subject pairs
+	 * Prints the subject-patterns tab's inline JavaScript.
+	 *
+	 * @param int $count Number of rows already rendered; the next new row indexes from here.
 	 */
 	private function add_subject_pairs_javascript( $count ) {
 		echo '<script type="text/javascript">
@@ -1717,7 +1770,9 @@ JS;
 	}
 
 	/**
-	 * Add JavaScript for blacklist
+	 * Prints the blacklist tab's inline JavaScript.
+	 *
+	 * @param int $count Number of rows already rendered; the next new row indexes from here.
 	 */
 	private function add_blacklist_javascript( $count ) {
 		echo '<script type="text/javascript">
@@ -1760,6 +1815,9 @@ JS;
     </script>';
 	}
 
+	/**
+	 * Renders the replacements tab.
+	 */
 	public function email_pairs_render() {
 		$options = get_option( $this->option_name );
 		$pairs   = isset( $options['email_replacement_pairs'] ) ? $options['email_replacement_pairs'] : array();
@@ -1821,6 +1879,9 @@ JS;
 		<?php
 	}
 
+	/**
+	 * Renders the subject-patterns tab.
+	 */
 	public function subject_pairs_render() {
 		$options = get_option( $this->option_name );
 		$pairs   = isset( $options['subject_pattern_pairs'] ) ? $options['subject_pattern_pairs'] : array();
@@ -1882,6 +1943,9 @@ JS;
 		<?php
 	}
 
+	/**
+	 * Renders the blacklist tab.
+	 */
 	public function blacklist_render() {
 		$options   = get_option( $this->option_name );
 		$blacklist = isset( $options['email_blacklist'] ) ? $options['email_blacklist'] : array();
@@ -1934,11 +1998,20 @@ JS;
 		<?php
 	}
 
+	/**
+	 * Substitutes target addresses with their replacement recipients.
+	 *
+	 * Hooked to wp_mail at priority 20, so it acts on whatever replace_by_subject()
+	 * left in place. Applies the blacklist before returning.
+	 *
+	 * @param array $args wp_mail arguments.
+	 * @return array Arguments with the recipient list rewritten.
+	 */
 	public function replace_emails( $args ) {
 		$options = get_option( $this->option_name );
 		$pairs   = isset( $options['email_replacement_pairs'] ) ? $options['email_replacement_pairs'] : array();
 
-		// Apply replacements
+		// Apply replacements.
 		foreach ( $pairs as $pair ) {
 			$target_email       = trim( $pair['target'] );
 			$replacement_emails = $pair['replacement'];
@@ -1955,12 +2028,22 @@ JS;
 			}
 		}
 
-		// Apply blacklist filtering
+		// Apply blacklist filtering.
 		$args = $this->apply_blacklist( $args );
 
 		return $args;
 	}
 
+	/**
+	 * Redirects mail whose subject matches a configured pattern.
+	 *
+	 * Hooked to wp_mail at priority 10. A match replaces the recipient list outright,
+	 * so with several matching patterns the last one wins. Applies the blacklist
+	 * before returning.
+	 *
+	 * @param array $args wp_mail arguments.
+	 * @return array Arguments with the recipient list rewritten.
+	 */
 	public function replace_by_subject( $args ) {
 		if ( ! isset( $args['subject'] ) ) {
 			return $args;
@@ -1978,7 +2061,7 @@ JS;
 			}
 
 			if ( preg_match( '/' . $pattern . '/i', $args['subject'] ) ) {
-				// Split recipients by comma and clean them
+				// Split recipients by comma and clean them.
 				$new_recipients = array_map( 'trim', explode( ',', $recipients ) );
 				// A matching pattern replaces the recipient list outright.
 				$args['to'] = array_unique( $new_recipients );
@@ -1996,12 +2079,18 @@ JS;
 			}
 		}
 
-		// Apply blacklist filtering
+		// Apply blacklist filtering.
 		$args = $this->apply_blacklist( $args );
 
 		return $args;
 	}
 
+	/**
+	 * Strips every blacklisted address from the recipient list.
+	 *
+	 * @param array $args wp_mail arguments.
+	 * @return array Arguments with blacklisted recipients removed.
+	 */
 	private function apply_blacklist( $args ) {
 		$options   = get_option( $this->option_name );
 		$blacklist = isset( $options['email_blacklist'] ) ? array_filter( $options['email_blacklist'] ) : array();
@@ -2010,7 +2099,7 @@ JS;
 			return $args;
 		}
 
-		// Normalize the 'to' field to an array
+		// Normalize the 'to' field to an array.
 		$recipients = array();
 		if ( is_array( $args['to'] ) ) {
 			$recipients = $args['to'];
@@ -2018,7 +2107,7 @@ JS;
 			$recipients = array_map( 'trim', explode( ',', $args['to'] ) );
 		}
 
-		// Filter out blacklisted emails
+		// Filter out blacklisted emails.
 		$filtered_recipients = array_filter(
 			$recipients,
 			function ( $email ) use ( $blacklist ) {
@@ -2078,7 +2167,7 @@ JS;
 	 * left as-is. Each source is guarded so the scan degrades gracefully when a
 	 * plugin (WooCommerce, Gravity Forms) is not active.
 	 *
-	 * @param string $email
+	 * @param string $email Address to search for.
 	 * @return array<int, array{source:string, location:string, detail:string, link:string}>
 	 */
 	private function find_email_usage( $email ) {

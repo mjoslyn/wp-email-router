@@ -37,15 +37,15 @@ abstract class EIR_Test_Case extends WP_UnitTestCase {
 	/**
 	 * Invoke a private/protected method on an object via reflection.
 	 *
-	 * @param object $object Target object.
+	 * @param object $target Target object.
 	 * @param string $method Method name.
 	 * @param mixed  ...$args Arguments to pass.
 	 * @return mixed
 	 */
-	protected function call_private( $object, $method, ...$args ) {
-		$ref = new ReflectionMethod( $object, $method );
+	protected function call_private( $target, $method, ...$args ) {
+		$ref = new ReflectionMethod( $target, $method );
 		$ref->setAccessible( true );
-		return $ref->invoke( $object, ...$args );
+		return $ref->invoke( $target, ...$args );
 	}
 
 	/**

@@ -5,6 +5,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers sanitize_imported_settings() and the export/import round trip.
+ */
 class Test_Import_Export extends EIR_Test_Case {
 
 	public function test_imports_valid_payload() {

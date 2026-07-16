@@ -5,6 +5,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers the sanitize_settings() Settings API callback.
+ */
 class Test_Sanitize_Settings extends EIR_Test_Case {
 
 	public function test_keeps_title_target_and_replacement() {

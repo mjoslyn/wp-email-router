@@ -150,6 +150,17 @@ vendor/bin/phpunit --group ajax          # ajax tests are excluded by default
 
 Ajax tests are grouped separately because `WP_Ajax_UnitTestCase` is slow to bootstrap.
 
+### Coding standard
+
+The plugin conforms to the WordPress Coding Standards (`WordPress` + `WordPress-Docs`), enforced by `phpcs.xml.dist`:
+
+```bash
+vendor/bin/phpcs      # check
+vendor/bin/phpcbf     # auto-fix what is fixable
+```
+
+The ruleset carries three documented exceptions: the main file keeps its slug-based name rather than a `class-` prefix, because WordPress requires that of a plugin bootstrap; test methods are exempt from the docblock sniff, since their names are already full sentences; and `do_action( 'qm/debug' )` is exempt from the hook-naming sniffs, because that hook belongs to Query Monitor.
+
 ## Provenance
 
 Extracted from the `hello-elementor-child` theme's `inc/email-interceptor.php`, where it lived as an include called Email Interceptor Router and stored its rules under `email_interceptor_replacer_settings`.

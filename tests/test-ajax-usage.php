@@ -6,11 +6,14 @@
  *   bin/docker-test.sh --group ajax
  * (PHPUnit excludes the ajax group from the default run.)
  *
- * @group ajax
- *
  * @package Email_Router
  */
 
+/**
+ * Covers the wp_ajax_email_router_usage handler.
+ *
+ * @group ajax
+ */
 class Test_Ajax_Usage extends WP_Ajax_UnitTestCase {
 
 	const OPTION = 'email_router_settings';

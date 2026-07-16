@@ -6,6 +6,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers the replace_emails() and replace_by_subject() wp_mail filters.
+ */
 class Test_Email_Replacement extends EIR_Test_Case {
 
 	public function test_replaces_target_with_single_recipient() {

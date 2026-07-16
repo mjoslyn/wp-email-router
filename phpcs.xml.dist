@@ -49,4 +49,13 @@
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<exclude-pattern>/tests/*</exclude-pattern>
 	</rule>
+
+	<!--
+		Test methods are named as full sentences (test_blacklist_strips_matching_recipient),
+		so a docblock restating the name adds noise, not information. Files and classes in
+		tests are still documented.
+	-->
+	<rule ref="Squiz.Commenting.FunctionComment.Missing">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
 </ruleset>

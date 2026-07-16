@@ -5,6 +5,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers unique_flatten() and singleton/hook registration.
+ */
 class Test_Helpers extends EIR_Test_Case {
 
 	public function test_unique_flatten_flattens_nested_arrays() {

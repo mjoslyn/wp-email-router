@@ -5,6 +5,9 @@
  * @package Email_Router
  */
 
+/**
+ * Covers apply_blacklist() in isolation.
+ */
 class Test_Blacklist extends EIR_Test_Case {
 
 	public function test_no_blacklist_returns_args_unchanged() {
