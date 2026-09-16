@@ -4,7 +4,7 @@ Tags: email, wp_mail, routing, smtp, notifications
 Requires at least: 5.8
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,6 +38,11 @@ No. Only mail routed through the `wp_mail` filter is intercepted.
 WordPress core notifications, WooCommerce transactional emails, Gravity Forms notifications, Contact Form 7 mail templates, and WPForms notifications. Other plugins can add their own rows with the `email_router_system_emails` filter. Recipients resolved at send time — a customer, a form field, a merge tag — are reported as dynamic, because they cannot be known in advance.
 
 == Changelog ==
+
+= 1.2.0 =
+* Confirm before removing a blacklist entry, which puts that address back into circulation.
+* Confirm before "Remove from all rules" in the Tools tab, which saves immediately across every replacement rule.
+* Confirm before importing settings, naming the file and counting the replacements, patterns, and blacklist entries it would replace.
 
 = 1.1.1 =
 * Fix a fatal error on the Tools tab for WooCommerce stores: the system email report asked every WC_Email for its subject, which WC_Email_Customer_Invoice cannot supply without an order.
