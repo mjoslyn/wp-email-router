@@ -1112,14 +1112,36 @@ class EmailRouter {
 		echo '<input type="file" name="email_router_import_file" id="email-router-import-file" accept="application/json,.json" style="display: none;">';
 		echo '<button type="button" class="button button-secondary" id="email-router-import-btn"><span class="dashicons dashicons-upload" style="vertical-align: text-top;"></span> Import settings</button>';
 		echo '</form>';
+
+		// Import replaces the whole option, so the prompt names what is at stake.
+		$current         = (array) get_option( $this->option_name, array() );
+		$rule_count      = count( isset( $current['email_replacement_pairs'] ) ? (array) $current['email_replacement_pairs'] : array() );
+		$pattern_count   = count( isset( $current['subject_pattern_pairs'] ) ? (array) $current['subject_pattern_pairs'] : array() );
+		$blocked_count   = count( isset( $current['email_blacklist'] ) ? (array) $current['email_blacklist'] : array() );
+		$current_summary = sprintf(
+			'%1$d replacement %2$s, %3$d subject %4$s, %5$d blacklisted %6$s',
+			$rule_count,
+			1 === $rule_count ? 'rule' : 'rules',
+			$pattern_count,
+			1 === $pattern_count ? 'pattern' : 'patterns',
+			$blocked_count,
+			1 === $blocked_count ? 'address' : 'addresses'
+		);
+
 		echo '<script type="text/javascript">
       (function($) {
+        var currentSummary = "' . esc_js( $current_summary ) . '";
         $(function() {
           $("#email-router-import-btn").on("click", function() {
             $("#email-router-import-file").trigger("click");
           });
           $("#email-router-import-file").on("change", function() {
             if (this.files && this.files.length) {
+              var name = this.files[0].name;
+              if (!window.confirm("Import " + name + "?\n\nThis replaces everything currently saved (" + currentSummary + ") and cannot be undone. Export first if you want a copy.")) {
+                $(this).val("");
+                return;
+              }
               $("#email-router-import-form").trigger("submit");
             }
           });
