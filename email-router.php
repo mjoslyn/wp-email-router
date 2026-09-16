@@ -1025,7 +1025,7 @@ class EmailRouter {
 			echo '<div class="notice notice-' . esc_attr( $remove_notice_type ) . ' inline" style="margin: 0 0 12px;"><p>' . esc_html( $remove_notice ) . '</p></div>';
 		}
 		echo '<p style="margin-top: 0; color: #666;">Removes the address from the recipient list of every replacement rule. Target addresses are not changed.</p>';
-		echo '<form method="post">';
+		echo '<form method="post" id="email-router-remove-form">';
 		wp_nonce_field( 'email_router_remove_email' );
 		echo '<input type="email" name="email_router_remove_email" class="regular-text email-router-ac-tools" placeholder="address@example.com" required autocomplete="off" style="margin-right: 8px;">';
 		submit_button( 'Remove from all rules', 'delete', '', false );
@@ -1054,6 +1054,12 @@ class EmailRouter {
           $(".email-router-ac-tools").each(function() {
             if (window.emailRouterAttachAutocomplete) {
               window.emailRouterAttachAutocomplete($(this), window.emailRouterToolsEmails || []);
+            }
+          });
+          $("#email-router-remove-form").on("submit", function(e) {
+            var email = $(this).find("input[name=\'email_router_remove_email\']").val() || "this address";
+            if (!window.confirm("Remove " + email + " from the recipient list of every replacement rule? This saves immediately and cannot be undone.")) {
+              e.preventDefault();
             }
           });
         });
@@ -1106,14 +1112,36 @@ class EmailRouter {
 		echo '<input type="file" name="email_router_import_file" id="email-router-import-file" accept="application/json,.json" style="display: none;">';
 		echo '<button type="button" class="button button-secondary" id="email-router-import-btn"><span class="dashicons dashicons-upload" style="vertical-align: text-top;"></span> Import settings</button>';
 		echo '</form>';
+
+		// Import replaces the whole option, so the prompt names what is at stake.
+		$current         = (array) get_option( $this->option_name, array() );
+		$rule_count      = count( isset( $current['email_replacement_pairs'] ) ? (array) $current['email_replacement_pairs'] : array() );
+		$pattern_count   = count( isset( $current['subject_pattern_pairs'] ) ? (array) $current['subject_pattern_pairs'] : array() );
+		$blocked_count   = count( isset( $current['email_blacklist'] ) ? (array) $current['email_blacklist'] : array() );
+		$current_summary = sprintf(
+			'%1$d replacement %2$s, %3$d subject %4$s, %5$d blacklisted %6$s',
+			$rule_count,
+			1 === $rule_count ? 'rule' : 'rules',
+			$pattern_count,
+			1 === $pattern_count ? 'pattern' : 'patterns',
+			$blocked_count,
+			1 === $blocked_count ? 'address' : 'addresses'
+		);
+
 		echo '<script type="text/javascript">
       (function($) {
+        var currentSummary = "' . esc_js( $current_summary ) . '";
         $(function() {
           $("#email-router-import-btn").on("click", function() {
             $("#email-router-import-file").trigger("click");
           });
           $("#email-router-import-file").on("change", function() {
             if (this.files && this.files.length) {
+              var name = this.files[0].name;
+              if (!window.confirm("Import " + name + "?\n\nThis replaces everything currently saved (" + currentSummary + ") and cannot be undone. Export first if you want a copy.")) {
+                $(this).val("");
+                return;
+              }
               $("#email-router-import-form").trigger("submit");
             }
           });
@@ -2474,7 +2502,10 @@ JS;
         
         $("#blacklist-tbody").on("click", ".remove-blacklist-email", function(e) {
           e.preventDefault();
-          $(this).closest("tr").remove();
+          var $row = $(this).closest("tr");
+          var email = $row.find(".column-email input").val() || "this address";
+          if (!window.confirm("Remove " + email + " from the blacklist? It will start receiving mail again.")) { return; }
+          $row.remove();
           if ($("#blacklist-tbody tr").length === 0) {
             $("#blacklist-tbody").html(`<tr class="no-items"><td colspan="3" style="text-align: center; padding: 20px; color: #999;">No emails blacklisted.</td></tr>`);
           }
