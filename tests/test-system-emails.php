@@ -228,4 +228,34 @@ class Test_System_Emails extends EIR_Test_Case {
 			has_action( 'admin_post_email_router_system_emails_export', array( $this->router, 'handle_system_emails_export' ) )
 		);
 	}
+
+	public function test_email_subject_reads_a_working_subject() {
+		$email = $this->getMockBuilder( stdClass::class )
+			->addMethods( array( 'get_subject' ) )
+			->getMock();
+		$email->method( 'get_subject' )->willReturn( 'Your order is complete' );
+
+		$this->assertSame(
+			'Your order is complete',
+			$this->call_private( $this->router, 'email_subject', $email )
+		);
+	}
+
+	public function test_email_subject_survives_an_email_that_cannot_build_one() {
+		// WC_Email_Customer_Invoice::get_subject() dereferences a null order on the
+		// bare instances WC()->mailer()->get_emails() returns, which took the Tools
+		// page down with a fatal before the subject read was guarded.
+		$email = $this->getMockBuilder( stdClass::class )
+			->addMethods( array( 'get_subject' ) )
+			->getMock();
+		$email->method( 'get_subject' )->willThrowException(
+			new Error( 'Call to a member function has_status() on null' )
+		);
+
+		$this->assertSame( '', $this->call_private( $this->router, 'email_subject', $email ) );
+	}
+
+	public function test_email_subject_is_empty_when_the_email_has_no_get_subject() {
+		$this->assertSame( '', $this->call_private( $this->router, 'email_subject', new stdClass() ) );
+	}
 }
