@@ -59,6 +59,7 @@ class EmailRouter {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_email_router_usage', array( $this, 'ajax_usage' ) );
 		add_action( 'admin_post_email_router_export', array( $this, 'handle_export' ) );
+		add_action( 'admin_post_email_router_system_emails_export', array( $this, 'handle_system_emails_export' ) );
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		// Priority 20: runs on the recipients replace_by_subject() leaves behind.
 		add_filter( 'wp_mail', array( $this, 'replace_emails' ), 20 );
@@ -936,7 +937,7 @@ class EmailRouter {
 			),
 			'tools'        => array(
 				'title'       => 'Tools',
-				'description' => 'Bulk actions and lookups: remove an address from every replacement rule at once, or find everywhere an address is used across the site.',
+				'description' => 'Bulk actions, lookups, and reports: remove an address from every replacement rule at once, find everywhere an address is used, or list every system email the site sends and who receives it.',
 			),
 		);
 
@@ -1084,7 +1085,10 @@ class EmailRouter {
 		}
 		echo '</div>';
 
-		// --- Tool 3: export / import settings ---
+		// --- Tool 3: report every system email and who receives it ---
+		$this->render_system_emails_section();
+
+		// --- Tool 4: export / import settings ---
 		echo '<div class="email-router-section">';
 		echo '<h2>Export / Import Settings</h2>';
 		echo '<div style="padding: 15px 20px;">';
@@ -1228,6 +1232,646 @@ class EmailRouter {
 		}
 
 		return $affected;
+	}
+
+	/**
+	 * Build the system email report.
+	 *
+	 * Collects every email the site is configured to send — WordPress core,
+	 * WooCommerce, Gravity Forms, and other mail-sending plugins — together with
+	 * the recipients each one is configured with, then runs those recipients
+	 * through this plugin's own routing rules so the report shows where the mail
+	 * actually lands.
+	 *
+	 * Recipients that are computed at send time (the customer on an order, a form
+	 * field, the user resetting their password) cannot be resolved here; they are
+	 * reported as dynamic recipients instead of literal addresses.
+	 *
+	 * @return array<int, array<string, mixed>> Report rows.
+	 */
+	private function get_system_email_report() {
+		$rows = array_merge(
+			$this->collect_wordpress_emails(),
+			$this->collect_woocommerce_emails(),
+			$this->collect_gravity_forms_emails(),
+			$this->collect_other_plugin_emails()
+		);
+
+		/**
+		 * Filters the rows of the system email report.
+		 *
+		 * Lets a plugin whose emails this report does not know about add its own.
+		 * Each row is an array with the keys source, name, subject, status,
+		 * recipients (array of literal addresses), dynamic (array of descriptions
+		 * of send-time recipients), and link.
+		 *
+		 * @param array $rows Report rows collected so far.
+		 */
+		$rows = apply_filters( 'email_router_system_emails', $rows );
+
+		$defaults = array(
+			'source'     => '',
+			'name'       => '',
+			'subject'    => '',
+			'status'     => '',
+			'recipients' => array(),
+			'dynamic'    => array(),
+			'link'       => '',
+		);
+
+		$report = array();
+		foreach ( (array) $rows as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$row               = array_merge( $defaults, $row );
+			$row['recipients'] = array_values( array_filter( array_map( 'trim', (array) $row['recipients'] ), 'strlen' ) );
+			$row['dynamic']    = array_values( array_filter( array_map( 'trim', (array) $row['dynamic'] ), 'strlen' ) );
+			$row['routed']     = $this->route_recipients( $row['recipients'], $row['subject'] );
+			$row['rerouted']   = array_map( 'strtolower', $row['recipients'] ) !== array_map( 'strtolower', $row['routed'] );
+			$report[]          = $row;
+		}
+
+		return $report;
+	}
+
+	/**
+	 * Run a set of recipients through this plugin's routing rules.
+	 *
+	 * Reuses the live wp_mail filters in their hooked order (subject routing at
+	 * priority 10, then address replacement at 20) so the report cannot drift
+	 * from what actually happens at send time. Subject routing is only simulated
+	 * when the email's subject is known, since an empty subject would match
+	 * patterns it never matches in practice.
+	 *
+	 * @param array  $recipients Literal recipient addresses.
+	 * @param string $subject    Subject line of the email, if known.
+	 * @return array Addresses the mail is delivered to after routing.
+	 */
+	private function route_recipients( $recipients, $subject = '' ) {
+		$recipients = array_values( array_filter( array_map( 'trim', (array) $recipients ), 'strlen' ) );
+
+		if ( empty( $recipients ) ) {
+			return array();
+		}
+
+		$args = array(
+			'to'      => implode( ',', $recipients ),
+			'subject' => (string) $subject,
+		);
+
+		if ( '' !== $args['subject'] ) {
+			$args = $this->replace_by_subject( $args );
+		}
+		$args = $this->replace_emails( $args );
+
+		$routed = is_array( $args['to'] ) ? $args['to'] : explode( ',', (string) $args['to'] );
+
+		return array_values( array_unique( array_filter( array_map( 'trim', $routed ), 'strlen' ) ) );
+	}
+
+	/**
+	 * Split a configured recipient string into literal addresses and everything else.
+	 *
+	 * Merge tags ({admin_email}, [your-email], {field_id="3"}) are not addresses and
+	 * cannot be routed, so they are returned separately as dynamic recipients.
+	 *
+	 * @param string|array $recipient_list Comma-separated recipient list, or an array of entries.
+	 * @return array{0: array, 1: array} Literal addresses, then dynamic entries.
+	 */
+	private function split_recipient_list( $recipient_list ) {
+		$entries = is_array( $recipient_list ) ? $recipient_list : explode( ',', (string) $recipient_list );
+		$literal = array();
+		$dynamic = array();
+
+		foreach ( $entries as $entry ) {
+			$entry = trim( (string) $entry );
+			if ( '' === $entry ) {
+				continue;
+			}
+
+			// Accept the "Name <address@example.com>" form as a literal address.
+			$address = $entry;
+			if ( preg_match( '/<([^>]+)>/', $entry, $matches ) ) {
+				$address = trim( $matches[1] );
+			}
+
+			if ( is_email( $address ) ) {
+				$literal[] = $address;
+			} else {
+				$dynamic[] = $entry;
+			}
+		}
+
+		return array( $literal, $dynamic );
+	}
+
+	/**
+	 * Collect the emails WordPress core itself sends.
+	 *
+	 * @return array<int, array<string, mixed>> Report rows.
+	 */
+	private function collect_wordpress_emails() {
+		$admin_email = (string) get_option( 'admin_email' );
+		$blogname    = wp_specialchars_decode( (string) get_option( 'blogname' ), ENT_QUOTES );
+		$general     = admin_url( 'options-general.php' );
+		$discussion  = admin_url( 'options-discussion.php' );
+
+		$rows = array(
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'New user registration (admin copy)',
+				'subject'    => '[' . $blogname . '] New User Registration',
+				'status'     => get_option( 'users_can_register' ) ? 'Open registration' : 'Registration closed',
+				'recipients' => array( $admin_email ),
+				'link'       => $general,
+			),
+			array(
+				'source'  => 'WordPress',
+				'name'    => 'New user welcome (user copy)',
+				'subject' => '[' . $blogname . '] Login Details',
+				'status'  => 'Always',
+				'dynamic' => array( 'The new user' ),
+				'link'    => $general,
+			),
+			array(
+				'source'  => 'WordPress',
+				'name'    => 'Password reset',
+				'subject' => '[' . $blogname . '] Password Reset',
+				'status'  => 'Always',
+				'dynamic' => array( 'The user requesting the reset' ),
+				'link'    => admin_url( 'users.php' ),
+			),
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'Comment awaiting moderation',
+				'subject'    => '[' . $blogname . '] Please moderate',
+				'status'     => get_option( 'moderation_notify' ) ? 'Enabled' : 'Disabled',
+				'recipients' => array( $admin_email ),
+				'dynamic'    => array( 'Post author (when not the admin)' ),
+				'link'       => $discussion,
+			),
+			array(
+				'source'  => 'WordPress',
+				'name'    => 'New comment published',
+				'subject' => '[' . $blogname . '] Comment',
+				'status'  => get_option( 'comments_notify' ) ? 'Enabled' : 'Disabled',
+				'dynamic' => array( 'Post author' ),
+				'link'    => $discussion,
+			),
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'Automatic update results',
+				'subject'    => '[' . $blogname . '] Some updates were applied',
+				'status'     => 'Always',
+				'recipients' => array( $admin_email ),
+				'link'       => admin_url( 'update-core.php' ),
+			),
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'Site health / fatal error recovery',
+				'subject'    => '[' . $blogname . '] Your site is experiencing a technical issue',
+				'status'     => 'On fatal error',
+				'recipients' => array( $admin_email ),
+				'link'       => admin_url( 'site-health.php' ),
+			),
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'Administration email change confirmation',
+				'subject'    => '[' . $blogname . '] New Admin Email Address',
+				'status'     => 'On change',
+				'recipients' => array( $admin_email ),
+				'link'       => $general,
+			),
+			array(
+				'source'     => 'WordPress',
+				'name'       => 'Personal data request (confirmation to admin)',
+				'subject'    => '[' . $blogname . '] Confirmed action',
+				'status'     => 'On request',
+				'recipients' => array( $admin_email ),
+				'link'       => admin_url( 'export-personal-data.php' ),
+			),
+		);
+
+		return $rows;
+	}
+
+	/**
+	 * Collect the WooCommerce transactional emails and their recipients.
+	 *
+	 * Customer-facing emails are addressed at send time from the order, so they
+	 * are reported as dynamic rather than as literal recipients.
+	 *
+	 * @return array<int, array<string, mixed>> Report rows.
+	 */
+	private function collect_woocommerce_emails() {
+		$rows = array();
+
+		if ( ! class_exists( 'WooCommerce' ) || ! function_exists( 'WC' ) ) {
+			return $rows;
+		}
+
+		$mailer = WC()->mailer();
+		if ( $mailer && method_exists( $mailer, 'get_emails' ) ) {
+			foreach ( $mailer->get_emails() as $wc_email ) {
+				$recipient = isset( $wc_email->recipient ) ? $wc_email->recipient : '';
+				$customer  = ! empty( $wc_email->customer_email );
+				$enabled   = method_exists( $wc_email, 'is_enabled' ) ? $wc_email->is_enabled() : true;
+				$subject   = method_exists( $wc_email, 'get_subject' ) ? $wc_email->get_subject() : '';
+				$title     = method_exists( $wc_email, 'get_title' ) ? $wc_email->get_title() : get_class( $wc_email );
+
+				list( $literal, $dynamic ) = $this->split_recipient_list( $recipient );
+
+				if ( $customer ) {
+					$dynamic[] = 'Customer (order billing address)';
+				}
+
+				$rows[] = array(
+					'source'     => 'WooCommerce',
+					'name'       => $title,
+					'subject'    => $subject,
+					'status'     => $enabled ? 'Enabled' : 'Disabled',
+					'recipients' => $literal,
+					'dynamic'    => $dynamic,
+					'link'       => admin_url( 'admin.php?page=wc-settings&tab=email&section=' . strtolower( get_class( $wc_email ) ) ),
+				);
+			}
+		}
+
+		$stock_recipient = get_option( 'woocommerce_stock_email_recipient' );
+		if ( $stock_recipient ) {
+			list( $literal, $dynamic ) = $this->split_recipient_list( $stock_recipient );
+
+			$low_stock = 'yes' === get_option( 'woocommerce_notify_low_stock', 'yes' );
+			$no_stock  = 'yes' === get_option( 'woocommerce_notify_no_stock', 'yes' );
+
+			$rows[] = array(
+				'source'     => 'WooCommerce',
+				'name'       => 'Stock notifications',
+				'subject'    => 'Product low in stock',
+				'status'     => ( $low_stock || $no_stock ) ? 'Enabled' : 'Disabled',
+				'recipients' => $literal,
+				'dynamic'    => $dynamic,
+				'link'       => admin_url( 'admin.php?page=wc-settings&tab=products&section=inventory' ),
+			);
+		}
+
+		$from_address = get_option( 'woocommerce_email_from_address' );
+		if ( $from_address ) {
+			$rows[] = array(
+				'source'  => 'WooCommerce',
+				'name'    => '"From" address (sender, not a recipient)',
+				'status'  => 'Sender',
+				'dynamic' => array( $from_address ),
+				'link'    => admin_url( 'admin.php?page=wc-settings&tab=email' ),
+			);
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Collect every Gravity Forms notification and its recipients.
+	 *
+	 * Notifications can address a field on the form or a set of routing rules
+	 * instead of a fixed address; both are reported as dynamic recipients, with
+	 * the literal addresses inside routing rules pulled out where they exist.
+	 *
+	 * @return array<int, array<string, mixed>> Report rows.
+	 */
+	private function collect_gravity_forms_emails() {
+		$rows = array();
+
+		if ( ! class_exists( 'GFAPI' ) ) {
+			return $rows;
+		}
+
+		// Null asks for active and inactive forms alike; a report should show both.
+		$forms = GFAPI::get_forms( null );
+		if ( ! is_array( $forms ) ) {
+			return $rows;
+		}
+
+		foreach ( $forms as $form ) {
+			if ( empty( $form['notifications'] ) ) {
+				continue;
+			}
+
+			foreach ( $form['notifications'] as $notification ) {
+				$literal = array();
+				$dynamic = array();
+				$to_type = $notification['toType'] ?? 'email';
+
+				if ( 'routing' === $to_type && ! empty( $notification['routing'] ) ) {
+					foreach ( $notification['routing'] as $route ) {
+						list( $route_literal, $route_dynamic ) = $this->split_recipient_list( $route['email'] ?? '' );
+						$literal                               = array_merge( $literal, $route_literal );
+						$dynamic                               = array_merge( $dynamic, $route_dynamic );
+					}
+					$dynamic[] = 'Conditional routing (' . count( (array) $notification['routing'] ) . ' rule(s))';
+				} elseif ( 'field' === $to_type ) {
+					$dynamic[] = 'Form field (id ' . ( $notification['toField'] ?? '?' ) . ')';
+				} else {
+					list( $literal, $dynamic ) = $this->split_recipient_list( $notification['to'] ?? '' );
+				}
+
+				foreach ( array( 'cc', 'bcc' ) as $extra ) {
+					if ( empty( $notification[ $extra ] ) || ! is_string( $notification[ $extra ] ) ) {
+						continue;
+					}
+					list( $extra_literal, $extra_dynamic ) = $this->split_recipient_list( $notification[ $extra ] );
+					foreach ( $extra_literal as $address ) {
+						$dynamic[] = strtoupper( $extra ) . ': ' . $address;
+					}
+					foreach ( $extra_dynamic as $address ) {
+						$dynamic[] = strtoupper( $extra ) . ': ' . $address;
+					}
+				}
+
+				$active = ! isset( $notification['isActive'] ) || $notification['isActive'];
+
+				$rows[] = array(
+					'source'     => 'Gravity Forms',
+					'name'       => $form['title'] . ' → ' . ( $notification['name'] ?? 'Untitled notification' ),
+					'subject'    => $notification['subject'] ?? '',
+					'status'     => $active ? 'Enabled' : 'Disabled',
+					'recipients' => $literal,
+					'dynamic'    => $dynamic,
+					'link'       => admin_url( 'admin.php?page=gf_edit_forms&view=settings&subview=notification&id=' . $form['id'] . '&nid=' . ( $notification['id'] ?? '' ) ),
+				);
+			}
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Collect emails from the other mail-sending plugins this report understands.
+	 *
+	 * Currently Contact Form 7 and WPForms. Anything else can add its own rows
+	 * through the email_router_system_emails filter.
+	 *
+	 * @return array<int, array<string, mixed>> Report rows.
+	 */
+	private function collect_other_plugin_emails() {
+		$rows = array();
+
+		// --- Contact Form 7 ---
+		if ( class_exists( 'WPCF7_ContactForm' ) ) {
+			$forms = WPCF7_ContactForm::find( array( 'posts_per_page' => -1 ) );
+			foreach ( (array) $forms as $form ) {
+				$templates = array(
+					'mail'   => 'Mail',
+					'mail_2' => 'Mail (2)',
+				);
+				foreach ( $templates as $prop => $label ) {
+					$mail = $form->prop( $prop );
+					if ( empty( $mail['recipient'] ) ) {
+						continue;
+					}
+					if ( 'mail_2' === $prop && empty( $mail['active'] ) ) {
+						continue;
+					}
+
+					list( $literal, $dynamic ) = $this->split_recipient_list( $mail['recipient'] );
+
+					$rows[] = array(
+						'source'     => 'Contact Form 7',
+						'name'       => $form->title() . ' → ' . $label,
+						'subject'    => $mail['subject'] ?? '',
+						'status'     => 'Enabled',
+						'recipients' => $literal,
+						'dynamic'    => $dynamic,
+						'link'       => admin_url( 'admin.php?page=wpcf7&post=' . $form->id() . '&active-tab=1' ),
+					);
+				}
+			}
+		}
+
+		// --- WPForms ---
+		$wpforms_forms = $this->get_wpforms_forms();
+		foreach ( $wpforms_forms as $form ) {
+			$data          = json_decode( $form->post_content, true );
+			$notifications = $data['settings']['notifications'] ?? array();
+			if ( ! is_array( $notifications ) ) {
+				continue;
+			}
+
+			foreach ( $notifications as $notification ) {
+				if ( empty( $notification['email'] ) ) {
+					continue;
+				}
+
+				list( $literal, $dynamic ) = $this->split_recipient_list( $notification['email'] );
+
+				foreach ( array(
+					'carboncopy' => 'CC',
+					'replyto'    => 'Reply-To',
+				) as $field => $field_label ) {
+					if ( ! empty( $notification[ $field ] ) ) {
+						$dynamic[] = $field_label . ': ' . $notification[ $field ];
+					}
+				}
+
+				$rows[] = array(
+					'source'     => 'WPForms',
+					'name'       => $form->post_title . ' → ' . ( $notification['notification_name'] ?? 'Notification' ),
+					'subject'    => $notification['subject'] ?? '',
+					'status'     => ( isset( $notification['enable'] ) && ! $notification['enable'] ) ? 'Disabled' : 'Enabled',
+					'recipients' => $literal,
+					'dynamic'    => $dynamic,
+					'link'       => admin_url( 'admin.php?page=wpforms-builder&view=settings&form_id=' . $form->ID ),
+				);
+			}
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Fetch the WPForms form posts, across the two accessor styles WPForms has shipped.
+	 *
+	 * @return array<int, WP_Post> Form posts, or an empty array when WPForms is absent.
+	 */
+	private function get_wpforms_forms() {
+		if ( ! function_exists( 'wpforms' ) ) {
+			return array();
+		}
+
+		$wpforms = wpforms();
+		if ( ! is_object( $wpforms ) ) {
+			return array();
+		}
+
+		$handler = null;
+		if ( method_exists( $wpforms, 'get' ) ) {
+			$handler = $wpforms->get( 'form' );
+		}
+		if ( ! is_object( $handler ) && isset( $wpforms->form ) ) {
+			$handler = $wpforms->form;
+		}
+		if ( ! is_object( $handler ) || ! method_exists( $handler, 'get' ) ) {
+			return array();
+		}
+
+		$forms = $handler->get( '' );
+
+		return is_array( $forms ) ? $forms : array();
+	}
+
+	/**
+	 * Render the Tools tab's system email report.
+	 */
+	private function render_system_emails_section() {
+		$report = $this->get_system_email_report();
+
+		$sources  = array_values( array_unique( wp_list_pluck( $report, 'source' ) ) );
+		$rerouted = count(
+			array_filter(
+				$report,
+				static function ( $row ) {
+					return ! empty( $row['rerouted'] );
+				}
+			)
+		);
+
+		echo '<div class="email-router-section">';
+		echo '<h2>System Email Report</h2>';
+		echo '<div style="padding: 15px 20px;">';
+		echo '<p style="margin-top: 0; color: #666;">Every email this site is configured to send and who receives it, with the recipients this router actually delivers to. Recipients that are worked out at send time (a customer, a form field, the user resetting a password) cannot be routed in advance and are listed as dynamic.</p>';
+
+		$summary = sprintf(
+			'%d email%s across %d source%s (%s). %d %s rerouted by this plugin.',
+			count( $report ),
+			1 === count( $report ) ? '' : 's',
+			count( $sources ),
+			1 === count( $sources ) ? '' : 's',
+			implode( ', ', $sources ),
+			$rerouted,
+			1 === $rerouted ? 'is' : 'are'
+		);
+		echo '<p style="margin: 0 0 12px; color: #666;">' . esc_html( $summary ) . '</p>';
+
+		$csv_url = wp_nonce_url( admin_url( 'admin-post.php?action=email_router_system_emails_export' ), 'email_router_system_emails_export' );
+		echo '<p><a href="' . esc_url( $csv_url ) . '" class="button button-secondary"><span class="dashicons dashicons-download" style="vertical-align: text-top;"></span> Download report (CSV)</a></p>';
+		echo '</div>';
+
+		if ( empty( $report ) ) {
+			echo '<div style="padding: 0 20px 20px; color: #666;">No system emails were found.</div>';
+			echo '</div>';
+			return;
+		}
+
+		echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 0;">';
+		echo '<thead><tr>';
+		echo '<th scope="col" style="width: 120px;">Source</th>';
+		echo '<th scope="col" style="width: 22%;">Email</th>';
+		echo '<th scope="col" style="width: 110px;">Status</th>';
+		echo '<th scope="col">Configured recipients</th>';
+		echo '<th scope="col">Delivered to</th>';
+		echo '<th scope="col" style="width: 70px;">Link</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $report as $row ) {
+			echo '<tr>';
+			echo '<td>' . esc_html( $row['source'] ) . '</td>';
+			echo '<td><strong>' . esc_html( $row['name'] ) . '</strong>';
+			if ( '' !== $row['subject'] ) {
+				echo '<br><span style="color: #666; font-size: 11px;">' . esc_html( $row['subject'] ) . '</span>';
+			}
+			echo '</td>';
+			echo '<td>' . esc_html( $row['status'] ) . '</td>';
+
+			echo '<td>';
+			if ( empty( $row['recipients'] ) && empty( $row['dynamic'] ) ) {
+				echo '<span style="color: #666;">&mdash; none configured &mdash;</span>';
+			}
+			if ( ! empty( $row['recipients'] ) ) {
+				echo esc_html( implode( ', ', $row['recipients'] ) );
+			}
+			foreach ( $row['dynamic'] as $dynamic ) {
+				echo '<div style="color: #666; font-style: italic;">' . esc_html( $dynamic ) . '</div>';
+			}
+			echo '</td>';
+
+			echo '<td>';
+			if ( empty( $row['recipients'] ) ) {
+				echo '<span style="color: #666;">&mdash;</span>';
+			} elseif ( empty( $row['routed'] ) ) {
+				echo '<span style="color: #b32d2e;">Blocked (all recipients blacklisted)</span>';
+			} else {
+				echo esc_html( implode( ', ', $row['routed'] ) );
+				if ( ! empty( $row['rerouted'] ) ) {
+					echo ' <span class="dashicons dashicons-randomize" style="color: #2271b1;" title="Rerouted by Email Router"></span>';
+				}
+			}
+			echo '</td>';
+
+			echo '<td>' . ( '' !== $row['link'] ? '<a href="' . esc_url( $row['link'] ) . '" target="_blank" rel="noopener">View</a>' : '&mdash;' ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+		echo '</div>';
+	}
+
+	/**
+	 * Stream the system email report to the browser as a downloadable CSV file.
+	 */
+	public function handle_system_emails_export() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Permission denied.' );
+		}
+		check_admin_referer( 'email_router_system_emails_export' );
+
+		$report   = $this->get_system_email_report();
+		$filename = 'email-router-system-emails-' . gmdate( 'Ymd-His' ) . '.csv';
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=' . $filename );
+
+		$lines = array(
+			$this->csv_row( array( 'Source', 'Email', 'Subject', 'Status', 'Configured recipients', 'Dynamic recipients', 'Delivered to', 'Rerouted', 'Link' ) ),
+		);
+
+		foreach ( $report as $row ) {
+			$lines[] = $this->csv_row(
+				array(
+					$row['source'],
+					$row['name'],
+					$row['subject'],
+					$row['status'],
+					implode( ', ', $row['recipients'] ),
+					implode( ', ', $row['dynamic'] ),
+					implode( ', ', $row['routed'] ),
+					$row['rerouted'] ? 'yes' : 'no',
+					$row['link'],
+				)
+			);
+		}
+
+		// A CSV download, not markup: escaping for HTML would corrupt the file.
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo implode( "\r\n", $lines ) . "\r\n";
+		exit;
+	}
+
+	/**
+	 * Format one CSV record, quoting every field.
+	 *
+	 * @param array $fields Field values.
+	 * @return string The record, without its line ending.
+	 */
+	private function csv_row( $fields ) {
+		$quoted = array_map(
+			static function ( $field ) {
+				return '"' . str_replace( '"', '""', (string) $field ) . '"';
+			},
+			$fields
+		);
+
+		return implode( ',', $quoted );
 	}
 
 	/**

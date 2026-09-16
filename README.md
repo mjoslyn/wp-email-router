@@ -22,10 +22,11 @@ The usual answer is a `wp_mail` filter in the theme, which means a deploy for ev
 - **Blacklist** — strip addresses from every outgoing message, whatever produced them.
 - **Tag inputs with autocomplete** — recipients are chips, and the autocomplete is sourced from every address already in use across your rules.
 - **"Where used?" scan** — for any address, search WordPress core, WooCommerce, Gravity Forms, and this plugin's own rules for literal uses of it.
+- **System email report** — every email the site is configured to send, who it is addressed to, and who the router actually delivers it to, across WordPress core, WooCommerce, Gravity Forms, Contact Form 7, and WPForms. Downloadable as CSV.
 - **Bulk removal** — strip an address from the recipient list of every replacement rule at once.
 - **Export / import** — settings round-trip as JSON, so a routing table can move between environments.
 - **Query Monitor integration** — every rewrite fires `qm/debug` with the before and after recipients.
-- **Degrades gracefully** — WooCommerce and Gravity Forms scanning is guarded by `class_exists`, so the plugin runs fine without them.
+- **Degrades gracefully** — WooCommerce, Gravity Forms, Contact Form 7, and WPForms scanning is guarded by `class_exists`/`function_exists`, so the plugin runs fine without them.
 - **No runtime dependencies** — a single PHP file; Composer is dev-only.
 
 ## Concepts
@@ -99,15 +100,58 @@ Recipients are stored as a comma-separated string; the chip UI is a presentation
 
 ## Tools
 
-The *Tools* tab holds three utilities:
+The *Tools* tab holds four utilities:
 
 | Tool | What it does |
 |---|---|
 | Remove from all replacements | Strips an address from the **recipient list** of every replacement rule. Targets are left alone, so a rule can be left with no recipients. |
 | Find where an email is used | Runs the site-wide literal scan (also available per-rule via **Where used?**). |
+| System email report | Lists every email the site sends, its configured recipients, and where the router delivers it. Downloads as CSV. |
 | Export / Import | Export downloads the option as JSON via a nonce-protected `admin-post` handler. Import validates, sanitizes, and **replaces** all settings. |
 
 All of it requires `manage_options`.
+
+### The system email report
+
+The report answers the question the routing table cannot: *what does this site send, and who gets it?* It walks the mail-sending configuration of everything it knows about and puts the result in one table.
+
+| Source | What is read |
+|---|---|
+| WordPress core | Registration, welcome, password reset, comment moderation and notification, automatic updates, fatal-error recovery, admin email change, personal data requests |
+| WooCommerce | Every `WC_Email` (recipient, subject, enabled state), the stock notification recipient, and the "from" address |
+| Gravity Forms | Every notification on every form — `to`, `cc`, `bcc`, plus field-based and conditional-routing recipients — on active and inactive forms alike |
+| Contact Form 7 | Each form's *Mail* and *Mail (2)* recipients, the second only when it is active |
+| WPForms | Each form's notifications, including CC and Reply-To |
+
+Two recipient columns sit side by side:
+
+- **Configured recipients** — what the sending plugin is set to. Literal addresses are listed plainly; anything resolved at send time (the customer on an order, a form field, the user resetting their password, a merge tag such as `{admin_email}`) is listed in italics as a dynamic recipient.
+- **Delivered to** — the literal recipients after this plugin's own rules run. This is computed by calling `replace_by_subject()` and `replace_emails()` in their hooked order, so the report cannot drift from what happens at send time. A row whose recipients all end up blacklisted reads *Blocked*.
+
+Subject routing is only simulated when the email's subject is known, since an empty subject would match patterns it never matches in practice. Subjects taken from WooCommerce and Gravity Forms still contain their placeholders (`{order_number}`, `{site_title}`), so a subject pattern that depends on an expanded placeholder may route in practice while the report shows it does not.
+
+Dynamic recipients are never routed. The router *does* rewrite those addresses at send time — it just cannot know in advance what they will be.
+
+### Reporting emails from another plugin
+
+A plugin the report does not know about can add its own rows:
+
+```php
+add_filter( 'email_router_system_emails', function ( $rows ) {
+    $rows[] = [
+        'source'     => 'My Plugin',
+        'name'       => 'Nightly digest',
+        'subject'    => 'Your nightly digest',
+        'status'     => 'Enabled',
+        'recipients' => [ 'digest@example.com' ],   // literal addresses
+        'dynamic'    => [ 'Each subscriber' ],      // resolved at send time
+        'link'       => admin_url( 'admin.php?page=my-plugin' ),
+    ];
+    return $rows;
+} );
+```
+
+Every key is optional. Routing and the *Delivered to* column are applied to `recipients` after the filter runs.
 
 ## Architecture
 
@@ -120,6 +164,8 @@ A single file, deliberately. The plugin is small enough that a class-per-concern
 | `apply_blacklist()` | Recipient stripping; called at the end of both filters |
 | `sanitize_settings()` | `register_setting` callback; merges each tab's POST over the stored option so tabs don't clobber each other |
 | `find_email_usage()` | Cross-plugin literal address scan |
+| `get_system_email_report()` | Cross-plugin inventory of outgoing mail, routed through `route_recipients()` |
+| `handle_system_emails_export()` | `admin_post_email_router_system_emails_export` — CSV download of the report |
 | `ajax_usage()` | `wp_ajax_email_router_usage` — backs the "Where used?" modal |
 | `handle_export()` | `admin_post_email_router_export` — JSON download |
 

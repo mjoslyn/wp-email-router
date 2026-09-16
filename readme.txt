@@ -19,7 +19,7 @@ It adds a **Tools &rarr; Email Router** admin page with four tabs:
 * **Email Replacements** — replace a target address with one or more recipients (comma-separated).
 * **Subject Patterns** — route mail to specific recipients when the subject matches a regular expression.
 * **Blacklist** — strip specific addresses from every outgoing message.
-* **Tools** — bulk-remove an address, scan the site for where an address is used, and export/import settings as JSON.
+* **Tools** — bulk-remove an address, scan the site for where an address is used, report every system email the site sends and who receives it, and export/import settings as JSON.
 
 All rules are stored in a single option (`email_router_settings`).
 
@@ -32,6 +32,10 @@ No. It only modifies the recipient list of mail already being sent through `wp_m
 = Will it affect plugins that send mail directly (not via wp_mail)? =
 
 No. Only mail routed through the `wp_mail` filter is intercepted.
+
+= What does the system email report cover? =
+
+WordPress core notifications, WooCommerce transactional emails, Gravity Forms notifications, Contact Form 7 mail templates, and WPForms notifications. Other plugins can add their own rows with the `email_router_system_emails` filter. Recipients resolved at send time — a customer, a form field, a merge tag — are reported as dynamic, because they cannot be known in advance.
 
 == Changelog ==
 
