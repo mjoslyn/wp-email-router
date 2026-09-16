@@ -1457,6 +1457,31 @@ class EmailRouter {
 	}
 
 	/**
+	 * Read a WC_Email's subject without letting a broken one take down the page.
+	 *
+	 * A WC_Email may build its subject from $this->object, which is null on the
+	 * bare instances WC()->mailer()->get_emails() returns.
+	 * WC_Email_Customer_Invoice dereferences it unconditionally, so asking it for
+	 * a subject outside a real send raises an Error. Report such an email without
+	 * a subject instead; the report already treats an unknown subject as "do not
+	 * simulate subject routing for this row".
+	 *
+	 * @param object $wc_email A WC_Email instance.
+	 * @return string The subject, or '' when it cannot be determined.
+	 */
+	private function email_subject( $wc_email ) {
+		if ( ! method_exists( $wc_email, 'get_subject' ) ) {
+			return '';
+		}
+
+		try {
+			return (string) $wc_email->get_subject();
+		} catch ( \Throwable $e ) {
+			return '';
+		}
+	}
+
+	/**
 	 * Collect the WooCommerce transactional emails and their recipients.
 	 *
 	 * Customer-facing emails are addressed at send time from the order, so they
@@ -1477,7 +1502,7 @@ class EmailRouter {
 				$recipient = isset( $wc_email->recipient ) ? $wc_email->recipient : '';
 				$customer  = ! empty( $wc_email->customer_email );
 				$enabled   = method_exists( $wc_email, 'is_enabled' ) ? $wc_email->is_enabled() : true;
-				$subject   = method_exists( $wc_email, 'get_subject' ) ? $wc_email->get_subject() : '';
+				$subject   = $this->email_subject( $wc_email );
 				$title     = method_exists( $wc_email, 'get_title' ) ? $wc_email->get_title() : get_class( $wc_email );
 
 				list( $literal, $dynamic ) = $this->split_recipient_list( $recipient );
