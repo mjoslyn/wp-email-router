@@ -1025,7 +1025,7 @@ class EmailRouter {
 			echo '<div class="notice notice-' . esc_attr( $remove_notice_type ) . ' inline" style="margin: 0 0 12px;"><p>' . esc_html( $remove_notice ) . '</p></div>';
 		}
 		echo '<p style="margin-top: 0; color: #666;">Removes the address from the recipient list of every replacement rule. Target addresses are not changed.</p>';
-		echo '<form method="post">';
+		echo '<form method="post" id="email-router-remove-form">';
 		wp_nonce_field( 'email_router_remove_email' );
 		echo '<input type="email" name="email_router_remove_email" class="regular-text email-router-ac-tools" placeholder="address@example.com" required autocomplete="off" style="margin-right: 8px;">';
 		submit_button( 'Remove from all rules', 'delete', '', false );
@@ -1054,6 +1054,12 @@ class EmailRouter {
           $(".email-router-ac-tools").each(function() {
             if (window.emailRouterAttachAutocomplete) {
               window.emailRouterAttachAutocomplete($(this), window.emailRouterToolsEmails || []);
+            }
+          });
+          $("#email-router-remove-form").on("submit", function(e) {
+            var email = $(this).find("input[name=\'email_router_remove_email\']").val() || "this address";
+            if (!window.confirm("Remove " + email + " from the recipient list of every replacement rule? This saves immediately and cannot be undone.")) {
+              e.preventDefault();
             }
           });
         });
@@ -2474,7 +2480,10 @@ JS;
         
         $("#blacklist-tbody").on("click", ".remove-blacklist-email", function(e) {
           e.preventDefault();
-          $(this).closest("tr").remove();
+          var $row = $(this).closest("tr");
+          var email = $row.find(".column-email input").val() || "this address";
+          if (!window.confirm("Remove " + email + " from the blacklist? It will start receiving mail again.")) { return; }
+          $row.remove();
           if ($("#blacklist-tbody tr").length === 0) {
             $("#blacklist-tbody").html(`<tr class="no-items"><td colspan="3" style="text-align: center; padding: 20px; color: #999;">No emails blacklisted.</td></tr>`);
           }
