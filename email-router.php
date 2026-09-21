@@ -2778,17 +2778,21 @@ JS;
 		$options = get_option( $this->option_name );
 		$pairs   = isset( $options['email_replacement_pairs'] ) ? $options['email_replacement_pairs'] : array();
 
-		// Apply replacements.
+		// Apply replacements. Each recipient is compared as a whole address, so a
+		// sales@ rule leaves vehiclesales@ alone.
 		foreach ( $pairs as $pair ) {
 			$target_email       = trim( $pair['target'] );
 			$replacement_emails = $pair['replacement'];
 			if ( ! empty( $target_email ) && ! empty( $replacement_emails ) ) {
-				$emls = str_replace( $target_email, $replacement_emails, $args['to'] );
-				if ( is_array( $emls ) ) {
-					$emls = self::unique_flatten( $emls );
-					$emls = implode( ',', $emls );
+				$recipients = array();
+				foreach ( self::split_addresses( $args['to'] ) as $recipient ) {
+					if ( 0 === strcasecmp( self::bare_address( $recipient ), $target_email ) ) {
+						$recipients = array_merge( $recipients, self::split_addresses( $replacement_emails ) );
+					} else {
+						$recipients[] = $recipient;
+					}
 				}
-				$args['to'] = $emls;
+				$args['to'] = implode( ',', array_unique( $recipients ) );
 				// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
 				// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 				do_action( 'qm/debug', $args['to'] );
@@ -3080,6 +3084,33 @@ JS;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Splits a recipient list into trimmed, non-empty entries.
+	 *
+	 * @param string|array $recipients Comma-separated string, or a possibly-nested array.
+	 * @return array Recipient entries.
+	 */
+	private static function split_addresses( $recipients ) {
+		$entries = array();
+		foreach ( self::unique_flatten( (array) $recipients ) as $entry ) {
+			$entries = array_merge( $entries, explode( ',', (string) $entry ) );
+		}
+		return array_values( array_filter( array_map( 'trim', $entries ), 'strlen' ) );
+	}
+
+	/**
+	 * Extracts the address from a recipient entry such as "Name <a@example.com>".
+	 *
+	 * @param string $recipient Recipient entry.
+	 * @return string The bare address.
+	 */
+	private static function bare_address( $recipient ) {
+		if ( preg_match( '/<([^>]+)>/', $recipient, $matches ) ) {
+			return trim( $matches[1] );
+		}
+		return trim( $recipient );
 	}
 
 	/**
