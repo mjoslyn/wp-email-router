@@ -360,4 +360,118 @@ class Test_Email_Replacement extends EIR_Test_Case {
 		$this->assertContains( 'keep@example.com', (array) $args['to'] );
 		$this->assertNotContains( 'block@example.com', (array) $args['to'] );
 	}
+
+	public function test_target_does_not_match_inside_a_longer_address() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'sales@example.com',
+						'replacement' => 'rep@example.com',
+					),
+				),
+			)
+		);
+
+		$args = $this->router->replace_emails(
+			array(
+				'to'      => 'vehiclesales@example.com',
+				'subject' => 'Hello',
+			)
+		);
+
+		$this->assertSame( 'vehiclesales@example.com', $args['to'] );
+	}
+
+	public function test_replaces_only_the_exact_address_in_a_list() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'sales@example.com',
+						'replacement' => 'a@example.com, b@example.com',
+					),
+				),
+			)
+		);
+
+		$args = $this->router->replace_emails(
+			array(
+				'to'      => 'vehiclesales@example.com, sales@example.com',
+				'subject' => 'Hello',
+			)
+		);
+
+		$this->assertSame( 'vehiclesales@example.com,a@example.com,b@example.com', $args['to'] );
+	}
+
+	public function test_target_match_is_case_insensitive() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'sales@example.com',
+						'replacement' => 'rep@example.com',
+					),
+				),
+			)
+		);
+
+		$args = $this->router->replace_emails(
+			array(
+				'to'      => 'Sales@Example.com',
+				'subject' => 'Hello',
+			)
+		);
+
+		$this->assertSame( 'rep@example.com', $args['to'] );
+	}
+
+	public function test_matches_address_inside_a_display_name() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'sales@example.com',
+						'replacement' => 'rep@example.com',
+					),
+				),
+			)
+		);
+
+		$args = $this->router->replace_emails(
+			array(
+				'to'      => 'Sales Team <sales@example.com>',
+				'subject' => 'Hello',
+			)
+		);
+
+		$this->assertSame( 'rep@example.com', $args['to'] );
+	}
+
+	public function test_replacement_output_feeds_later_rules() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'one@example.com',
+						'replacement' => 'two@example.com',
+					),
+					array(
+						'target'      => 'two@example.com',
+						'replacement' => 'three@example.com',
+					),
+				),
+			)
+		);
+
+		$args = $this->router->replace_emails(
+			array(
+				'to'      => 'one@example.com',
+				'subject' => 'Hello',
+			)
+		);
+
+		$this->assertSame( 'three@example.com', $args['to'] );
+	}
 }

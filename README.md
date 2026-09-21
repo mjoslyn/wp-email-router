@@ -35,7 +35,7 @@ The usual answer is a `wp_mail` filter in the theme, which means a deploy for ev
 
 | Type | Matches on | Effect on `to` |
 |---|---|---|
-| Replacement | An exact target address appearing in `to` | The target is substituted with the rule's recipients |
+| Replacement | A recipient in `to` whose address equals the target (case-insensitive) | The target is substituted with the rule's recipients |
 | Subject pattern | A regex match against `subject` | `to` is **replaced entirely** by the rule's recipients |
 | Blacklist | An exact address in `to` | The address is removed |
 
@@ -44,7 +44,7 @@ The usual answer is a `wp_mail` filter in the theme, which means a deploy for ev
 Both rule types hook `wp_mail`, at different priorities:
 
 1. **`replace_by_subject`** (priority 10) — checks every subject pattern. Each match overwrites `to` wholesale, so with multiple matching patterns the last one in the list wins.
-2. **`replace_emails`** (priority 20) — checks every replacement rule against the recipients left by step 1. Substitution is textual, so a subject rule's recipients are themselves eligible for replacement.
+2. **`replace_emails`** (priority 20) — checks every replacement rule against the recipients left by step 1. Each recipient is compared as a whole address, ignoring case and any display name, so a `sales@` rule does not touch `vehiclesales@`. Rules apply in order, so a subject rule's recipients, and an earlier replacement's output, are themselves eligible for replacement.
 
 The blacklist is applied at the end of *both* callbacks, so a blacklisted address cannot survive either path.
 
