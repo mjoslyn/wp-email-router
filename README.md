@@ -126,11 +126,17 @@ The report answers the question the routing table cannot: *what does this site s
 Two recipient columns sit side by side:
 
 - **Configured recipients** — what the sending plugin is set to. Literal addresses are listed plainly; anything resolved at send time (the customer on an order, a form field, the user resetting their password, a merge tag such as `{admin_email}`) is listed in italics as a dynamic recipient.
-- **Delivered to** — the literal recipients after this plugin's own rules run. This is computed by calling `replace_by_subject()` and `replace_emails()` in their hooked order, so the report cannot drift from what happens at send time. A row whose recipients all end up blacklisted reads *Blocked*.
+- **Delivered to** — the literal recipients after this plugin's own rules run. This is computed by calling `replace_by_subject()` and `replace_emails()` in their hooked order, so the report cannot drift from what happens at send time. A row whose routed recipients all end up blacklisted reads *Blocked*.
 
 Subject routing is only simulated when the email's subject is known, since an empty subject would match patterns it never matches in practice. Subjects taken from WooCommerce and Gravity Forms still contain their placeholders (`{order_number}`, `{site_title}`), so a subject pattern that depends on an expanded placeholder may route in practice while the report shows it does not.
 
 Dynamic recipients are never routed. The router *does* rewrite those addresses at send time — it just cannot know in advance what they will be.
+
+### CC and BCC are not routed
+
+The `wp_mail` filters rewrite `to` and nothing else. CC and BCC travel in the message headers, so a blacklisted address still receives mail as a CC, and a replacement rule never expands one.
+
+The report says so rather than hiding it. Such addresses are listed in both recipient columns marked **not routed**, which also means a row can read *Blocked (all routed recipients blacklisted)* and still deliver — to its CC list. Treat the blacklist as a `to` filter, not a site-wide block.
 
 ### Reporting emails from another plugin
 
@@ -143,7 +149,10 @@ add_filter( 'email_router_system_emails', function ( $rows ) {
         'name'       => 'Nightly digest',
         'subject'    => 'Your nightly digest',
         'status'     => 'Enabled',
-        'recipients' => [ 'digest@example.com' ],   // literal addresses
+        'recipients' => [ 'digest@example.com' ],   // literal addresses, routed
+        'unrouted'   => [                           // literal, never routed (CC/BCC)
+            [ 'address' => 'archive@example.com', 'label' => 'BCC' ],
+        ],
         'dynamic'    => [ 'Each subscriber' ],      // resolved at send time
         'link'       => admin_url( 'admin.php?page=my-plugin' ),
     ];
@@ -151,7 +160,7 @@ add_filter( 'email_router_system_emails', function ( $rows ) {
 } );
 ```
 
-Every key is optional. Routing and the *Delivered to* column are applied to `recipients` after the filter runs.
+Every key is optional. Routing and the *Delivered to* column are applied to `recipients` after the filter runs; `unrouted` is passed through untouched and reported as delivered but not routed. An `unrouted` entry may be a bare address string when there is no useful label.
 
 ## Architecture
 
