@@ -4,7 +4,7 @@ Tags: email, wp_mail, routing, smtp, notifications
 Requires at least: 5.8
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,6 +38,9 @@ No. Only mail routed through the `wp_mail` filter is intercepted.
 WordPress core notifications, WooCommerce transactional emails, Gravity Forms notifications, Contact Form 7 mail templates, and WPForms notifications. Other plugins can add their own rows with the `email_router_system_emails` filter. Recipients resolved at send time — a customer, a form field, a merge tag — are reported as dynamic, because they cannot be known in advance.
 
 == Changelog ==
+
+= 1.3.1 =
+* Fix replacement rules matching inside longer addresses: a `sales@example.com` rule rewrote `vehiclesales@example.com` into `vehiclerep@example.com`. Rules now match whole addresses, case-insensitively, including addresses written as `Name <address>`.
 
 = 1.3.0 =
 * Report CC and BCC addresses as recipients that the router never rewrites, instead of listing them as dynamic recipients. Report rows gain an `unrouted` key.
