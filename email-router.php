@@ -1263,6 +1263,53 @@ class EmailRouter {
 	}
 
 	/**
+	 * Normalise a row's unrouted recipients into address/label pairs.
+	 *
+	 * Callers may pass a plain address or an array with address and label keys,
+	 * so a collector that knows an address came from CC can say so while a
+	 * simpler one can just hand over the address.
+	 *
+	 * @param mixed $unrouted Raw unrouted value from a report row.
+	 * @return array<int, array{address: string, label: string}>
+	 */
+	private function normalize_unrouted( $unrouted ) {
+		$clean = array();
+
+		foreach ( (array) $unrouted as $entry ) {
+			if ( is_array( $entry ) ) {
+				$address = isset( $entry['address'] ) ? trim( (string) $entry['address'] ) : '';
+				$label   = isset( $entry['label'] ) ? trim( (string) $entry['label'] ) : '';
+			} else {
+				$address = trim( (string) $entry );
+				$label   = '';
+			}
+
+			if ( '' === $address ) {
+				continue;
+			}
+
+			$clean[] = array(
+				'address' => $address,
+				'label'   => $label,
+			);
+		}
+
+		return $clean;
+	}
+
+	/**
+	 * Render an unrouted entry as "address (LABEL)" for display.
+	 *
+	 * @param array $entry Normalised unrouted entry.
+	 * @return string
+	 */
+	private function format_unrouted( $entry ) {
+		return '' === $entry['label']
+			? $entry['address']
+			: $entry['address'] . ' (' . $entry['label'] . ')';
+	}
+
+	/**
 	 * Build the system email report.
 	 *
 	 * Collects every email the site is configured to send — WordPress core,
@@ -1290,8 +1337,10 @@ class EmailRouter {
 		 *
 		 * Lets a plugin whose emails this report does not know about add its own.
 		 * Each row is an array with the keys source, name, subject, status,
-		 * recipients (array of literal addresses), dynamic (array of descriptions
-		 * of send-time recipients), and link.
+		 * recipients (array of literal addresses, which are routed), unrouted
+		 * (array of literal addresses the router never rewrites, such as CC and
+		 * BCC, each either an address or an array with address and label keys),
+		 * dynamic (array of descriptions of send-time recipients), and link.
 		 *
 		 * @param array $rows Report rows collected so far.
 		 */
@@ -1303,6 +1352,7 @@ class EmailRouter {
 			'subject'    => '',
 			'status'     => '',
 			'recipients' => array(),
+			'unrouted'   => array(),
 			'dynamic'    => array(),
 			'link'       => '',
 		);
@@ -1314,6 +1364,7 @@ class EmailRouter {
 			}
 			$row               = array_merge( $defaults, $row );
 			$row['recipients'] = array_values( array_filter( array_map( 'trim', (array) $row['recipients'] ), 'strlen' ) );
+			$row['unrouted']   = $this->normalize_unrouted( $row['unrouted'] );
 			$row['dynamic']    = array_values( array_filter( array_map( 'trim', (array) $row['dynamic'] ), 'strlen' ) );
 			$row['routed']     = $this->route_recipients( $row['recipients'], $row['subject'] );
 			$row['rerouted']   = array_map( 'strtolower', $row['recipients'] ) !== array_map( 'strtolower', $row['routed'] );
@@ -1628,13 +1679,17 @@ class EmailRouter {
 					list( $literal, $dynamic ) = $this->split_recipient_list( $notification['to'] ?? '' );
 				}
 
+				$unrouted = array();
 				foreach ( array( 'cc', 'bcc' ) as $extra ) {
 					if ( empty( $notification[ $extra ] ) || ! is_string( $notification[ $extra ] ) ) {
 						continue;
 					}
 					list( $extra_literal, $extra_dynamic ) = $this->split_recipient_list( $notification[ $extra ] );
 					foreach ( $extra_literal as $address ) {
-						$dynamic[] = strtoupper( $extra ) . ': ' . $address;
+						$unrouted[] = array(
+							'address' => $address,
+							'label'   => strtoupper( $extra ),
+						);
 					}
 					foreach ( $extra_dynamic as $address ) {
 						$dynamic[] = strtoupper( $extra ) . ': ' . $address;
@@ -1649,6 +1704,7 @@ class EmailRouter {
 					'subject'    => $notification['subject'] ?? '',
 					'status'     => $active ? 'Enabled' : 'Disabled',
 					'recipients' => $literal,
+					'unrouted'   => $unrouted,
 					'dynamic'    => $dynamic,
 					'link'       => admin_url( 'admin.php?page=gf_edit_forms&view=settings&subview=notification&id=' . $form['id'] . '&nid=' . ( $notification['id'] ?? '' ) ),
 				);
@@ -1791,7 +1847,7 @@ class EmailRouter {
 		echo '<div class="email-router-section">';
 		echo '<h2>System Email Report</h2>';
 		echo '<div style="padding: 15px 20px;">';
-		echo '<p style="margin-top: 0; color: #666;">Every email this site is configured to send and who receives it, with the recipients this router actually delivers to. Recipients that are worked out at send time (a customer, a form field, the user resetting a password) cannot be routed in advance and are listed as dynamic.</p>';
+		echo '<p style="margin-top: 0; color: #666;">Every email this site is configured to send and who receives it, with the recipients this router actually delivers to. Recipients that are worked out at send time (a customer, a form field, the user resetting a password) cannot be routed in advance and are listed as dynamic. CC and BCC addresses travel in the headers, which this router does not rewrite, so they are shown as not routed.</p>';
 
 		$summary = sprintf(
 			'%d email%s across %d source%s (%s). %d %s rerouted by this plugin.',
@@ -1836,11 +1892,14 @@ class EmailRouter {
 			echo '<td>' . esc_html( $row['status'] ) . '</td>';
 
 			echo '<td>';
-			if ( empty( $row['recipients'] ) && empty( $row['dynamic'] ) ) {
+			if ( empty( $row['recipients'] ) && empty( $row['unrouted'] ) && empty( $row['dynamic'] ) ) {
 				echo '<span style="color: #666;">&mdash; none configured &mdash;</span>';
 			}
 			if ( ! empty( $row['recipients'] ) ) {
 				echo esc_html( implode( ', ', $row['recipients'] ) );
+			}
+			foreach ( $row['unrouted'] as $entry ) {
+				echo '<div>' . esc_html( $this->format_unrouted( $entry ) ) . '</div>';
 			}
 			foreach ( $row['dynamic'] as $dynamic ) {
 				echo '<div style="color: #666; font-style: italic;">' . esc_html( $dynamic ) . '</div>';
@@ -1848,14 +1907,21 @@ class EmailRouter {
 			echo '</td>';
 
 			echo '<td>';
-			if ( empty( $row['recipients'] ) ) {
+			if ( empty( $row['recipients'] ) && empty( $row['unrouted'] ) ) {
 				echo '<span style="color: #666;">&mdash;</span>';
-			} elseif ( empty( $row['routed'] ) ) {
-				echo '<span style="color: #b32d2e;">Blocked (all recipients blacklisted)</span>';
 			} else {
-				echo esc_html( implode( ', ', $row['routed'] ) );
-				if ( ! empty( $row['rerouted'] ) ) {
-					echo ' <span class="dashicons dashicons-randomize" style="color: #2271b1;" title="Rerouted by Email Router"></span>';
+				if ( ! empty( $row['recipients'] ) && empty( $row['routed'] ) ) {
+					// Only the routed recipients are blocked; any CC or BCC still receives.
+					echo '<span style="color: #b32d2e;">Blocked (all routed recipients blacklisted)</span>';
+				} elseif ( ! empty( $row['routed'] ) ) {
+					echo esc_html( implode( ', ', $row['routed'] ) );
+					if ( ! empty( $row['rerouted'] ) ) {
+						echo ' <span class="dashicons dashicons-randomize" style="color: #2271b1;" title="Rerouted by Email Router"></span>';
+					}
+				}
+				foreach ( $row['unrouted'] as $entry ) {
+					echo '<div>' . esc_html( $this->format_unrouted( $entry ) );
+					echo ' <span style="color: #666; font-size: 11px;">not routed</span></div>';
 				}
 			}
 			echo '</td>';
@@ -1885,7 +1951,7 @@ class EmailRouter {
 		header( 'Content-Disposition: attachment; filename=' . $filename );
 
 		$lines = array(
-			$this->csv_row( array( 'Source', 'Email', 'Subject', 'Status', 'Configured recipients', 'Dynamic recipients', 'Delivered to', 'Rerouted', 'Link' ) ),
+			$this->csv_row( array( 'Source', 'Email', 'Subject', 'Status', 'Configured recipients', 'Unrouted recipients', 'Dynamic recipients', 'Delivered to', 'Rerouted', 'Link' ) ),
 		);
 
 		foreach ( $report as $row ) {
@@ -1896,6 +1962,7 @@ class EmailRouter {
 					$row['subject'],
 					$row['status'],
 					implode( ', ', $row['recipients'] ),
+					implode( ', ', array_map( array( $this, 'format_unrouted' ), $row['unrouted'] ) ),
 					implode( ', ', $row['dynamic'] ),
 					implode( ', ', $row['routed'] ),
 					$row['rerouted'] ? 'yes' : 'no',

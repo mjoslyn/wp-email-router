@@ -258,4 +258,141 @@ class Test_System_Emails extends EIR_Test_Case {
 	public function test_email_subject_is_empty_when_the_email_has_no_get_subject() {
 		$this->assertSame( '', $this->call_private( $this->router, 'email_subject', new stdClass() ) );
 	}
+
+	public function test_unrouted_accepts_a_plain_address() {
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'   => 'Test',
+					'name'     => 'Plain unrouted',
+					'unrouted' => array( 'cc@example.com' ),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Plain unrouted' );
+
+		$this->assertNotNull( $row );
+		$this->assertSame(
+			array(
+				array(
+					'address' => 'cc@example.com',
+					'label'   => '',
+				),
+			),
+			$row['unrouted']
+		);
+	}
+
+	public function test_unrouted_accepts_an_address_with_a_label() {
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'   => 'Test',
+					'name'     => 'Labelled unrouted',
+					'unrouted' => array(
+						array(
+							'address' => 'bcc@example.com',
+							'label'   => 'BCC',
+						),
+					),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Labelled unrouted' );
+
+		$this->assertSame( 'bcc@example.com', $row['unrouted'][0]['address'] );
+		$this->assertSame( 'BCC', $row['unrouted'][0]['label'] );
+	}
+
+	public function test_unrouted_recipients_are_never_routed() {
+		$this->set_settings(
+			array(
+				'email_replacement_pairs' => array(
+					array(
+						'target'      => 'cc@example.com',
+						'replacement' => 'elsewhere@example.com',
+					),
+				),
+			)
+		);
+
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'     => 'Test',
+					'name'       => 'Unrouted bypasses replacement',
+					'recipients' => array( 'cc@example.com' ),
+					'unrouted'   => array( 'cc@example.com' ),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Unrouted bypasses replacement' );
+
+		// The same address is rewritten in recipients and left alone in unrouted.
+		$this->assertSame( array( 'elsewhere@example.com' ), $row['routed'] );
+		$this->assertSame( 'cc@example.com', $row['unrouted'][0]['address'] );
+	}
+
+	public function test_unrouted_survives_a_blacklisted_recipient_list() {
+		$this->set_settings( array( 'email_blacklist' => array( 'blocked@example.com' ) ) );
+
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'     => 'Test',
+					'name'       => 'Blocked to with a CC',
+					'recipients' => array( 'blocked@example.com' ),
+					'unrouted'   => array(
+						array(
+							'address' => 'cc@example.com',
+							'label'   => 'CC',
+						),
+					),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Blocked to with a CC' );
+
+		// Every routed recipient is blacklisted, but the CC still receives.
+		$this->assertSame( array(), $row['routed'] );
+		$this->assertCount( 1, $row['unrouted'] );
+	}
+
+	public function test_unrouted_drops_empty_entries() {
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'   => 'Test',
+					'name'     => 'Messy unrouted',
+					'unrouted' => array( '', '  ', array( 'address' => '' ), 'ok@example.com' ),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Messy unrouted' );
+
+		$this->assertCount( 1, $row['unrouted'] );
+		$this->assertSame( 'ok@example.com', $row['unrouted'][0]['address'] );
+	}
+
+	public function test_rows_without_unrouted_still_get_the_key() {
+		foreach ( $this->report() as $row ) {
+			$this->assertArrayHasKey( 'unrouted', $row );
+			$this->assertIsArray( $row['unrouted'] );
+		}
+	}
 }
