@@ -33,11 +33,11 @@ The usual answer is a `wp_mail` filter in the theme, which means a deploy for ev
 
 ### The three rule types
 
-| Type | Matches on | Effect on `to` |
+| Type | Matches on | Effect |
 |---|---|---|
-| Replacement | A recipient in `to` whose address equals the target (case-insensitive) | The target is substituted with the rule's recipients |
-| Subject pattern | A regex match against `subject` | `to` is **replaced entirely** by the rule's recipients |
-| Blacklist | An exact address in `to` | The address is removed |
+| Replacement | A recipient in `to`, `Cc` or `Bcc` whose address equals the target (case-insensitive) | The target is substituted with the rule's recipients |
+| Subject pattern | A regex match against `subject` | `to` is **replaced entirely** by the rule's recipients; `Cc` and `Bcc` are left alone |
+| Blacklist | An exact address in `to`, or the address in a `Cc` or `Bcc` entry (case-insensitive) | The address is removed |
 
 ### Filter order
 
@@ -47,6 +47,10 @@ Both rule types hook `wp_mail`, at different priorities:
 2. **`replace_emails`** (priority 20) — checks every replacement rule against the recipients left by step 1. Each recipient is compared as a whole address, ignoring case and any display name, so a `sales@` rule does not touch `vehiclesales@`. Rules apply in order, so a subject rule's recipients, and an earlier replacement's output, are themselves eligible for replacement.
 
 The blacklist is applied at the end of *both* callbacks, so a blacklisted address cannot survive either path.
+
+### CC and BCC
+
+`replace_emails` also rewrites every `Cc:` and `Bcc:` line in the `headers` argument, whether headers arrive as an array of lines or a newline-separated string. Each address goes through the replacement rules and then the blacklist, so an alias used as a BCC expands the same way it does in `to`. A header left with no addresses is dropped. Subject patterns do not touch these headers: a subject rule redirects the primary recipients and keeps the copies. A rewritten entry loses its display name.
 
 ### Subject patterns are regular expressions
 
@@ -126,17 +130,11 @@ The report answers the question the routing table cannot: *what does this site s
 Two recipient columns sit side by side:
 
 - **Configured recipients** — what the sending plugin is set to. Literal addresses are listed plainly; anything resolved at send time (the customer on an order, a form field, the user resetting their password, a merge tag such as `{admin_email}`) is listed in italics as a dynamic recipient.
-- **Delivered to** — the literal recipients after this plugin's own rules run. This is computed by calling `replace_by_subject()` and `replace_emails()` in their hooked order, so the report cannot drift from what happens at send time. A row whose routed recipients all end up blacklisted reads *Blocked*.
+- **Delivered to** — the literal recipients after this plugin's own rules run. This is computed by calling `replace_by_subject()` and `replace_emails()` in their hooked order, and CC and BCC through the same routing `replace_emails()` gives their headers, so the report cannot drift from what happens at send time. A row whose recipients all end up blacklisted reads *Blocked*; one whose `to` list is blacklisted but still has a CC or BCC reads *To blocked* and lists the copies.
 
 Subject routing is only simulated when the email's subject is known, since an empty subject would match patterns it never matches in practice. Subjects taken from WooCommerce and Gravity Forms still contain their placeholders (`{order_number}`, `{site_title}`), so a subject pattern that depends on an expanded placeholder may route in practice while the report shows it does not.
 
 Dynamic recipients are never routed. The router *does* rewrite those addresses at send time — it just cannot know in advance what they will be.
-
-### CC and BCC are not routed
-
-The `wp_mail` filters rewrite `to` and nothing else. CC and BCC travel in the message headers, so a blacklisted address still receives mail as a CC, and a replacement rule never expands one.
-
-The report says so rather than hiding it. Such addresses are listed in both recipient columns marked **not routed**, which also means a row can read *Blocked (all routed recipients blacklisted)* and still deliver — to its CC list. Treat the blacklist as a `to` filter, not a site-wide block.
 
 ### Reporting emails from another plugin
 
@@ -149,8 +147,8 @@ add_filter( 'email_router_system_emails', function ( $rows ) {
         'name'       => 'Nightly digest',
         'subject'    => 'Your nightly digest',
         'status'     => 'Enabled',
-        'recipients' => [ 'digest@example.com' ],   // literal addresses, routed
-        'unrouted'   => [                           // literal, never routed (CC/BCC)
+        'recipients' => [ 'digest@example.com' ],   // literal To addresses
+        'copies'     => [                           // literal CC/BCC addresses
             [ 'address' => 'archive@example.com', 'label' => 'BCC' ],
         ],
         'dynamic'    => [ 'Each subscriber' ],      // resolved at send time
@@ -160,7 +158,7 @@ add_filter( 'email_router_system_emails', function ( $rows ) {
 } );
 ```
 
-Every key is optional. Routing and the *Delivered to* column are applied to `recipients` after the filter runs; `unrouted` is passed through untouched and reported as delivered but not routed. An `unrouted` entry may be a bare address string when there is no useful label.
+Every key is optional. Routing and the *Delivered to* column are applied to `recipients` and `copies` after the filter runs; `copies` gets replacement and the blacklist but not subject routing, matching what happens to CC and BCC headers at send time. A `copies` entry may be a bare address string when there is no useful label. Rows written for 1.3, which used the key `unrouted`, are read as `copies`.
 
 ## Architecture
 

@@ -259,20 +259,20 @@ class Test_System_Emails extends EIR_Test_Case {
 		$this->assertSame( '', $this->call_private( $this->router, 'email_subject', new stdClass() ) );
 	}
 
-	public function test_unrouted_accepts_a_plain_address() {
+	public function test_copies_accept_a_plain_address() {
 		add_filter(
 			'email_router_system_emails',
 			function ( $rows ) {
 				$rows[] = array(
-					'source'   => 'Test',
-					'name'     => 'Plain unrouted',
-					'unrouted' => array( 'cc@example.com' ),
+					'source' => 'Test',
+					'name'   => 'Plain copy',
+					'copies' => array( 'cc@example.com' ),
 				);
 				return $rows;
 			}
 		);
 
-		$row = $this->row_named( $this->report(), 'Plain unrouted' );
+		$row = $this->row_named( $this->report(), 'Plain copy' );
 
 		$this->assertNotNull( $row );
 		$this->assertSame(
@@ -282,17 +282,41 @@ class Test_System_Emails extends EIR_Test_Case {
 					'label'   => '',
 				),
 			),
-			$row['unrouted']
+			$row['copies']
 		);
 	}
 
-	public function test_unrouted_accepts_an_address_with_a_label() {
+	public function test_copies_accept_an_address_with_a_label() {
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source' => 'Test',
+					'name'   => 'Labelled copy',
+					'copies' => array(
+						array(
+							'address' => 'bcc@example.com',
+							'label'   => 'BCC',
+						),
+					),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Labelled copy' );
+
+		$this->assertSame( 'bcc@example.com', $row['copies'][0]['address'] );
+		$this->assertSame( 'BCC', $row['copies'][0]['label'] );
+	}
+
+	public function test_unrouted_is_read_as_copies() {
 		add_filter(
 			'email_router_system_emails',
 			function ( $rows ) {
 				$rows[] = array(
 					'source'   => 'Test',
-					'name'     => 'Labelled unrouted',
+					'name'     => 'Legacy unrouted',
 					'unrouted' => array(
 						array(
 							'address' => 'bcc@example.com',
@@ -304,19 +328,20 @@ class Test_System_Emails extends EIR_Test_Case {
 			}
 		);
 
-		$row = $this->row_named( $this->report(), 'Labelled unrouted' );
+		$row = $this->row_named( $this->report(), 'Legacy unrouted' );
 
-		$this->assertSame( 'bcc@example.com', $row['unrouted'][0]['address'] );
-		$this->assertSame( 'BCC', $row['unrouted'][0]['label'] );
+		$this->assertArrayNotHasKey( 'unrouted', $row );
+		$this->assertSame( 'bcc@example.com', $row['copies'][0]['address'] );
+		$this->assertSame( 'BCC', $row['copies'][0]['label'] );
 	}
 
-	public function test_unrouted_recipients_are_never_routed() {
+	public function test_copies_are_routed_by_replacement_rules() {
 		$this->set_settings(
 			array(
 				'email_replacement_pairs' => array(
 					array(
-						'target'      => 'cc@example.com',
-						'replacement' => 'elsewhere@example.com',
+						'target'      => 'alias@example.com',
+						'replacement' => 'rep1@example.com,rep2@example.com',
 					),
 				),
 			)
@@ -326,23 +351,61 @@ class Test_System_Emails extends EIR_Test_Case {
 			'email_router_system_emails',
 			function ( $rows ) {
 				$rows[] = array(
-					'source'     => 'Test',
-					'name'       => 'Unrouted bypasses replacement',
-					'recipients' => array( 'cc@example.com' ),
-					'unrouted'   => array( 'cc@example.com' ),
+					'source' => 'Test',
+					'name'   => 'Copy expands',
+					'copies' => array(
+						array(
+							'address' => 'alias@example.com',
+							'label'   => 'BCC',
+						),
+					),
 				);
 				return $rows;
 			}
 		);
 
-		$row = $this->row_named( $this->report(), 'Unrouted bypasses replacement' );
+		$row = $this->row_named( $this->report(), 'Copy expands' );
 
-		// The same address is rewritten in recipients and left alone in unrouted.
-		$this->assertSame( array( 'elsewhere@example.com' ), $row['routed'] );
-		$this->assertSame( 'cc@example.com', $row['unrouted'][0]['address'] );
+		$this->assertSame(
+			array(
+				array(
+					'address' => 'rep1@example.com',
+					'label'   => 'BCC',
+				),
+				array(
+					'address' => 'rep2@example.com',
+					'label'   => 'BCC',
+				),
+			),
+			$row['routed_copies']
+		);
+		$this->assertTrue( $row['rerouted'] );
 	}
 
-	public function test_unrouted_survives_a_blacklisted_recipient_list() {
+	public function test_blacklisted_copies_are_not_delivered() {
+		$this->set_settings( array( 'email_blacklist' => array( 'blocked@example.com' ) ) );
+
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source'     => 'Test',
+					'name'       => 'Blocked copy',
+					'recipients' => array( 'to@example.com' ),
+					'copies'     => array( 'blocked@example.com', 'cc@example.com' ),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Blocked copy' );
+
+		$this->assertSame( array( 'to@example.com' ), $row['routed'] );
+		$this->assertCount( 1, $row['routed_copies'] );
+		$this->assertSame( 'cc@example.com', $row['routed_copies'][0]['address'] );
+	}
+
+	public function test_copies_survive_a_blacklisted_recipient_list() {
 		$this->set_settings( array( 'email_blacklist' => array( 'blocked@example.com' ) ) );
 
 		add_filter(
@@ -352,7 +415,7 @@ class Test_System_Emails extends EIR_Test_Case {
 					'source'     => 'Test',
 					'name'       => 'Blocked to with a CC',
 					'recipients' => array( 'blocked@example.com' ),
-					'unrouted'   => array(
+					'copies'     => array(
 						array(
 							'address' => 'cc@example.com',
 							'label'   => 'CC',
@@ -365,34 +428,68 @@ class Test_System_Emails extends EIR_Test_Case {
 
 		$row = $this->row_named( $this->report(), 'Blocked to with a CC' );
 
-		// Every routed recipient is blacklisted, but the CC still receives.
+		// Every To recipient is blacklisted, but the CC still receives.
 		$this->assertSame( array(), $row['routed'] );
-		$this->assertCount( 1, $row['unrouted'] );
+		$this->assertCount( 1, $row['routed_copies'] );
 	}
 
-	public function test_unrouted_drops_empty_entries() {
+	public function test_copies_are_not_subject_routed() {
+		$this->set_settings(
+			array(
+				'subject_pattern_pairs' => array(
+					array(
+						'pattern'    => 'Hello',
+						'recipients' => 'subject@example.com',
+					),
+				),
+			)
+		);
+
 		add_filter(
 			'email_router_system_emails',
 			function ( $rows ) {
 				$rows[] = array(
-					'source'   => 'Test',
-					'name'     => 'Messy unrouted',
-					'unrouted' => array( '', '  ', array( 'address' => '' ), 'ok@example.com' ),
+					'source'     => 'Test',
+					'name'       => 'Subject routed with a CC',
+					'subject'    => 'Hello',
+					'recipients' => array( 'to@example.com' ),
+					'copies'     => array( 'cc@example.com' ),
 				);
 				return $rows;
 			}
 		);
 
-		$row = $this->row_named( $this->report(), 'Messy unrouted' );
+		$row = $this->row_named( $this->report(), 'Subject routed with a CC' );
 
-		$this->assertCount( 1, $row['unrouted'] );
-		$this->assertSame( 'ok@example.com', $row['unrouted'][0]['address'] );
+		$this->assertSame( array( 'subject@example.com' ), $row['routed'] );
+		$this->assertSame( 'cc@example.com', $row['routed_copies'][0]['address'] );
 	}
 
-	public function test_rows_without_unrouted_still_get_the_key() {
+	public function test_copies_drop_empty_entries() {
+		add_filter(
+			'email_router_system_emails',
+			function ( $rows ) {
+				$rows[] = array(
+					'source' => 'Test',
+					'name'   => 'Messy copies',
+					'copies' => array( '', '  ', array( 'address' => '' ), 'ok@example.com' ),
+				);
+				return $rows;
+			}
+		);
+
+		$row = $this->row_named( $this->report(), 'Messy copies' );
+
+		$this->assertCount( 1, $row['copies'] );
+		$this->assertSame( 'ok@example.com', $row['copies'][0]['address'] );
+	}
+
+	public function test_rows_without_copies_still_get_the_keys() {
 		foreach ( $this->report() as $row ) {
-			$this->assertArrayHasKey( 'unrouted', $row );
-			$this->assertIsArray( $row['unrouted'] );
+			$this->assertArrayHasKey( 'copies', $row );
+			$this->assertIsArray( $row['copies'] );
+			$this->assertArrayHasKey( 'routed_copies', $row );
+			$this->assertIsArray( $row['routed_copies'] );
 		}
 	}
 }

@@ -1263,19 +1263,19 @@ class EmailRouter {
 	}
 
 	/**
-	 * Normalise a row's unrouted recipients into address/label pairs.
+	 * Normalise a row's CC and BCC recipients into address/label pairs.
 	 *
 	 * Callers may pass a plain address or an array with address and label keys,
 	 * so a collector that knows an address came from CC can say so while a
 	 * simpler one can just hand over the address.
 	 *
-	 * @param mixed $unrouted Raw unrouted value from a report row.
+	 * @param mixed $copies Raw copies value from a report row.
 	 * @return array<int, array{address: string, label: string}>
 	 */
-	private function normalize_unrouted( $unrouted ) {
+	private function normalize_copies( $copies ) {
 		$clean = array();
 
-		foreach ( (array) $unrouted as $entry ) {
+		foreach ( (array) $copies as $entry ) {
 			if ( is_array( $entry ) ) {
 				$address = isset( $entry['address'] ) ? trim( (string) $entry['address'] ) : '';
 				$label   = isset( $entry['label'] ) ? trim( (string) $entry['label'] ) : '';
@@ -1298,12 +1298,35 @@ class EmailRouter {
 	}
 
 	/**
-	 * Render an unrouted entry as "address (LABEL)" for display.
+	 * Run normalised copies through the same rules route_copy_headers() applies.
 	 *
-	 * @param array $entry Normalised unrouted entry.
+	 * Each routed address keeps the label of the entry it came from.
+	 *
+	 * @param array $copies Normalised copies.
+	 * @return array<int, array{address: string, label: string}>
+	 */
+	private function route_copies( $copies ) {
+		$routed = array();
+
+		foreach ( $copies as $entry ) {
+			foreach ( $this->route_copy_addresses( $entry['address'] ) as $address ) {
+				$routed[] = array(
+					'address' => $address,
+					'label'   => $entry['label'],
+				);
+			}
+		}
+
+		return $routed;
+	}
+
+	/**
+	 * Render a copy entry as "address (LABEL)" for display.
+	 *
+	 * @param array $entry Normalised copy entry.
 	 * @return string
 	 */
-	private function format_unrouted( $entry ) {
+	private function format_copy( $entry ) {
 		return '' === $entry['label']
 			? $entry['address']
 			: $entry['address'] . ' (' . $entry['label'] . ')';
@@ -1337,10 +1360,10 @@ class EmailRouter {
 		 *
 		 * Lets a plugin whose emails this report does not know about add its own.
 		 * Each row is an array with the keys source, name, subject, status,
-		 * recipients (array of literal addresses, which are routed), unrouted
-		 * (array of literal addresses the router never rewrites, such as CC and
-		 * BCC, each either an address or an array with address and label keys),
-		 * dynamic (array of descriptions of send-time recipients), and link.
+		 * recipients (array of literal To addresses), copies (array of literal CC
+		 * and BCC addresses, each either an address or an array with address and
+		 * label keys; `unrouted` is accepted as an older name for it), dynamic
+		 * (array of descriptions of send-time recipients), and link.
 		 *
 		 * @param array $rows Report rows collected so far.
 		 */
@@ -1352,7 +1375,7 @@ class EmailRouter {
 			'subject'    => '',
 			'status'     => '',
 			'recipients' => array(),
-			'unrouted'   => array(),
+			'copies'     => array(),
 			'dynamic'    => array(),
 			'link'       => '',
 		);
@@ -1362,13 +1385,21 @@ class EmailRouter {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
-			$row               = array_merge( $defaults, $row );
-			$row['recipients'] = array_values( array_filter( array_map( 'trim', (array) $row['recipients'] ), 'strlen' ) );
-			$row['unrouted']   = $this->normalize_unrouted( $row['unrouted'] );
-			$row['dynamic']    = array_values( array_filter( array_map( 'trim', (array) $row['dynamic'] ), 'strlen' ) );
-			$row['routed']     = $this->route_recipients( $row['recipients'], $row['subject'] );
-			$row['rerouted']   = array_map( 'strtolower', $row['recipients'] ) !== array_map( 'strtolower', $row['routed'] );
-			$report[]          = $row;
+			// Collectors written against 1.3 report CC and BCC under `unrouted`.
+			if ( isset( $row['unrouted'] ) ) {
+				$row['copies'] = array_merge( (array) ( $row['copies'] ?? array() ), (array) $row['unrouted'] );
+				unset( $row['unrouted'] );
+			}
+			$row                  = array_merge( $defaults, $row );
+			$row['recipients']    = array_values( array_filter( array_map( 'trim', (array) $row['recipients'] ), 'strlen' ) );
+			$row['copies']        = $this->normalize_copies( $row['copies'] );
+			$row['dynamic']       = array_values( array_filter( array_map( 'trim', (array) $row['dynamic'] ), 'strlen' ) );
+			$row['routed']        = $this->route_recipients( $row['recipients'], $row['subject'] );
+			$row['routed_copies'] = $this->route_copies( $row['copies'] );
+
+			$to_rerouted     = array_map( 'strtolower', $row['recipients'] ) !== array_map( 'strtolower', $row['routed'] );
+			$row['rerouted'] = $to_rerouted || $row['copies'] !== $row['routed_copies'];
+			$report[]        = $row;
 		}
 
 		return $report;
@@ -1679,14 +1710,14 @@ class EmailRouter {
 					list( $literal, $dynamic ) = $this->split_recipient_list( $notification['to'] ?? '' );
 				}
 
-				$unrouted = array();
+				$copies = array();
 				foreach ( array( 'cc', 'bcc' ) as $extra ) {
 					if ( empty( $notification[ $extra ] ) || ! is_string( $notification[ $extra ] ) ) {
 						continue;
 					}
 					list( $extra_literal, $extra_dynamic ) = $this->split_recipient_list( $notification[ $extra ] );
 					foreach ( $extra_literal as $address ) {
-						$unrouted[] = array(
+						$copies[] = array(
 							'address' => $address,
 							'label'   => strtoupper( $extra ),
 						);
@@ -1704,7 +1735,7 @@ class EmailRouter {
 					'subject'    => $notification['subject'] ?? '',
 					'status'     => $active ? 'Enabled' : 'Disabled',
 					'recipients' => $literal,
-					'unrouted'   => $unrouted,
+					'copies'     => $copies,
 					'dynamic'    => $dynamic,
 					'link'       => admin_url( 'admin.php?page=gf_edit_forms&view=settings&subview=notification&id=' . $form['id'] . '&nid=' . ( $notification['id'] ?? '' ) ),
 				);
@@ -1847,7 +1878,7 @@ class EmailRouter {
 		echo '<div class="email-router-section">';
 		echo '<h2>System Email Report</h2>';
 		echo '<div style="padding: 15px 20px;">';
-		echo '<p style="margin-top: 0; color: #666;">Every email this site is configured to send and who receives it, with the recipients this router actually delivers to. Recipients that are worked out at send time (a customer, a form field, the user resetting a password) cannot be routed in advance and are listed as dynamic. CC and BCC addresses travel in the headers, which this router does not rewrite, so they are shown as not routed.</p>';
+		echo '<p style="margin-top: 0; color: #666;">Every email this site is configured to send and who receives it, with the recipients this router actually delivers to. Recipients that are worked out at send time (a customer, a form field, the user resetting a password) cannot be routed in advance and are listed as dynamic. CC and BCC addresses go through the same replacement rules and blacklist as the main recipients, but not subject routing.</p>';
 
 		$summary = sprintf(
 			'%d email%s across %d source%s (%s). %d %s rerouted by this plugin.',
@@ -1892,14 +1923,14 @@ class EmailRouter {
 			echo '<td>' . esc_html( $row['status'] ) . '</td>';
 
 			echo '<td>';
-			if ( empty( $row['recipients'] ) && empty( $row['unrouted'] ) && empty( $row['dynamic'] ) ) {
+			if ( empty( $row['recipients'] ) && empty( $row['copies'] ) && empty( $row['dynamic'] ) ) {
 				echo '<span style="color: #666;">&mdash; none configured &mdash;</span>';
 			}
 			if ( ! empty( $row['recipients'] ) ) {
 				echo esc_html( implode( ', ', $row['recipients'] ) );
 			}
-			foreach ( $row['unrouted'] as $entry ) {
-				echo '<div>' . esc_html( $this->format_unrouted( $entry ) ) . '</div>';
+			foreach ( $row['copies'] as $entry ) {
+				echo '<div>' . esc_html( $this->format_copy( $entry ) ) . '</div>';
 			}
 			foreach ( $row['dynamic'] as $dynamic ) {
 				echo '<div style="color: #666; font-style: italic;">' . esc_html( $dynamic ) . '</div>';
@@ -1907,21 +1938,22 @@ class EmailRouter {
 			echo '</td>';
 
 			echo '<td>';
-			if ( empty( $row['recipients'] ) && empty( $row['unrouted'] ) ) {
+			if ( empty( $row['recipients'] ) && empty( $row['copies'] ) ) {
 				echo '<span style="color: #666;">&mdash;</span>';
+			} elseif ( empty( $row['routed'] ) && empty( $row['routed_copies'] ) ) {
+				echo '<span style="color: #b32d2e;">Blocked (all recipients blacklisted)</span>';
 			} else {
 				if ( ! empty( $row['recipients'] ) && empty( $row['routed'] ) ) {
-					// Only the routed recipients are blocked; any CC or BCC still receives.
-					echo '<span style="color: #b32d2e;">Blocked (all routed recipients blacklisted)</span>';
+					// The To list is blocked, but a CC or BCC still receives.
+					echo '<span style="color: #b32d2e;">To blocked (all blacklisted)</span>';
 				} elseif ( ! empty( $row['routed'] ) ) {
 					echo esc_html( implode( ', ', $row['routed'] ) );
-					if ( ! empty( $row['rerouted'] ) ) {
-						echo ' <span class="dashicons dashicons-randomize" style="color: #2271b1;" title="Rerouted by Email Router"></span>';
-					}
 				}
-				foreach ( $row['unrouted'] as $entry ) {
-					echo '<div>' . esc_html( $this->format_unrouted( $entry ) );
-					echo ' <span style="color: #666; font-size: 11px;">not routed</span></div>';
+				foreach ( $row['routed_copies'] as $entry ) {
+					echo '<div>' . esc_html( $this->format_copy( $entry ) ) . '</div>';
+				}
+				if ( ! empty( $row['rerouted'] ) ) {
+					echo ' <span class="dashicons dashicons-randomize" style="color: #2271b1;" title="Rerouted by Email Router"></span>';
 				}
 			}
 			echo '</td>';
@@ -1951,7 +1983,7 @@ class EmailRouter {
 		header( 'Content-Disposition: attachment; filename=' . $filename );
 
 		$lines = array(
-			$this->csv_row( array( 'Source', 'Email', 'Subject', 'Status', 'Configured recipients', 'Unrouted recipients', 'Dynamic recipients', 'Delivered to', 'Rerouted', 'Link' ) ),
+			$this->csv_row( array( 'Source', 'Email', 'Subject', 'Status', 'Configured recipients', 'CC/BCC recipients', 'Dynamic recipients', 'Delivered to', 'Rerouted', 'Link' ) ),
 		);
 
 		foreach ( $report as $row ) {
@@ -1962,9 +1994,9 @@ class EmailRouter {
 					$row['subject'],
 					$row['status'],
 					implode( ', ', $row['recipients'] ),
-					implode( ', ', array_map( array( $this, 'format_unrouted' ), $row['unrouted'] ) ),
+					implode( ', ', array_map( array( $this, 'format_copy' ), $row['copies'] ) ),
 					implode( ', ', $row['dynamic'] ),
-					implode( ', ', $row['routed'] ),
+					implode( ', ', array_merge( $row['routed'], array_map( array( $this, 'format_copy' ), $row['routed_copies'] ) ) ),
 					$row['rerouted'] ? 'yes' : 'no',
 					$row['link'],
 				)
@@ -2769,7 +2801,8 @@ JS;
 	 * Substitutes target addresses with their replacement recipients.
 	 *
 	 * Hooked to wp_mail at priority 20, so it acts on whatever replace_by_subject()
-	 * left in place. Applies the blacklist before returning.
+	 * left in place. Applies the blacklist before returning. CC and BCC headers get
+	 * the same replacement and blacklist treatment through route_copy_headers().
 	 *
 	 * @param array $args wp_mail arguments.
 	 * @return array Arguments with the recipient list rewritten.
@@ -2784,25 +2817,108 @@ JS;
 			$target_email       = trim( $pair['target'] );
 			$replacement_emails = $pair['replacement'];
 			if ( ! empty( $target_email ) && ! empty( $replacement_emails ) ) {
-				$recipients = array();
-				foreach ( self::split_addresses( $args['to'] ) as $recipient ) {
-					if ( 0 === strcasecmp( self::bare_address( $recipient ), $target_email ) ) {
-						$recipients = array_merge( $recipients, self::split_addresses( $replacement_emails ) );
-					} else {
-						$recipients[] = $recipient;
-					}
-				}
-				$args['to'] = implode( ',', array_unique( $recipients ) );
+				$recipients = self::replace_address( self::split_addresses( $args['to'] ), $target_email, $replacement_emails );
+				$args['to'] = implode( ',', $recipients );
 				// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
 				// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 				do_action( 'qm/debug', $args['to'] );
 			}
 		}
 
+		$args = $this->route_copy_headers( $args );
+
 		// Apply blacklist filtering.
 		$args = $this->apply_blacklist( $args );
 
 		return $args;
+	}
+
+	/**
+	 * Routes the addresses in CC and BCC headers.
+	 *
+	 * Address replacement and the blacklist apply to these the same as to `to`, so
+	 * an alias used as a BCC is expanded and a blacklisted address never receives a
+	 * copy. Subject routing is not applied: a subject rule redirects the primary
+	 * recipients and leaves the copies alone. A header whose addresses are all
+	 * blacklisted is dropped. Every other header passes through untouched.
+	 *
+	 * @param array $args wp_mail arguments.
+	 * @return array Arguments with the CC and BCC headers rewritten.
+	 */
+	private function route_copy_headers( $args ) {
+		if ( empty( $args['headers'] ) ) {
+			return $args;
+		}
+
+		// wp_mail takes headers as an array of lines or a newline-separated string.
+		$headers = $args['headers'];
+		$lines   = is_array( $headers ) ? $headers : explode( "\n", str_replace( "\r\n", "\n", (string) $headers ) );
+		$routed  = array();
+
+		foreach ( $lines as $key => $line ) {
+			if ( ! is_string( $line ) || ! preg_match( '/^\s*(cc|bcc)\s*:(.*)$/i', $line, $matches ) ) {
+				$routed[ $key ] = $line;
+				continue;
+			}
+
+			$addresses = $this->route_copy_addresses( $matches[2] );
+			if ( ! empty( $addresses ) ) {
+				$routed[ $key ] = $matches[1] . ': ' . implode( ', ', $addresses );
+			}
+		}
+
+		if ( $routed !== $lines ) {
+			do_action(
+				// qm/debug is Query Monitor's hook; the name is theirs, not ours to prefix.
+				// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+				'qm/debug',
+				array(
+					'copy_headers_routed' => true,
+					'original_headers'    => $lines,
+					'routed_headers'      => $routed,
+				)
+			);
+		}
+
+		$args['headers'] = is_array( $headers ) ? $routed : implode( "\n", $routed );
+
+		return $args;
+	}
+
+	/**
+	 * Runs CC or BCC addresses through the replacement rules and the blacklist.
+	 *
+	 * Shared by the wp_mail path and the system email report so the two agree.
+	 * The blacklist is matched on the bare address, ignoring case, so a header
+	 * entry written as "Name <address>" is still caught.
+	 *
+	 * @param string|array $addresses Comma-separated list, or an array of entries.
+	 * @return array Addresses the copy is delivered to.
+	 */
+	private function route_copy_addresses( $addresses ) {
+		$options   = get_option( $this->option_name );
+		$pairs     = isset( $options['email_replacement_pairs'] ) ? $options['email_replacement_pairs'] : array();
+		$blacklist = isset( $options['email_blacklist'] ) ? array_filter( (array) $options['email_blacklist'] ) : array();
+		$blacklist = array_map( 'strtolower', array_map( 'trim', $blacklist ) );
+
+		$addresses = self::split_addresses( $addresses );
+
+		foreach ( $pairs as $pair ) {
+			$target_email       = isset( $pair['target'] ) ? trim( $pair['target'] ) : '';
+			$replacement_emails = isset( $pair['replacement'] ) ? $pair['replacement'] : '';
+			if ( ! empty( $target_email ) && ! empty( $replacement_emails ) ) {
+				$addresses = self::replace_address( $addresses, $target_email, $replacement_emails );
+			}
+		}
+
+		return array_values(
+			array_filter(
+				$addresses,
+				function ( $address ) use ( $blacklist ) {
+					return ! in_array( strtolower( self::bare_address( $address ) ), $blacklist, true );
+				}
+			)
+		);
 	}
 
 	/**
@@ -3098,6 +3214,26 @@ JS;
 			$entries = array_merge( $entries, explode( ',', (string) $entry ) );
 		}
 		return array_values( array_filter( array_map( 'trim', $entries ), 'strlen' ) );
+	}
+
+	/**
+	 * Swaps every entry whose address matches the target for the replacement list.
+	 *
+	 * @param array  $recipients  Recipient entries.
+	 * @param string $target      Address to replace, compared whole and ignoring case.
+	 * @param string $replacement Comma-separated replacement addresses.
+	 * @return array Recipient entries with duplicates dropped.
+	 */
+	private static function replace_address( $recipients, $target, $replacement ) {
+		$replaced = array();
+		foreach ( $recipients as $recipient ) {
+			if ( 0 === strcasecmp( self::bare_address( $recipient ), $target ) ) {
+				$replaced = array_merge( $replaced, self::split_addresses( $replacement ) );
+			} else {
+				$replaced[] = $recipient;
+			}
+		}
+		return array_values( array_unique( $replaced ) );
 	}
 
 	/**
