@@ -12,7 +12,7 @@
  * @wordpress-plugin
  * Plugin Name: Email Router
  * Description: Intercepts outgoing emails and routes/replaces recipients based on target addresses, subject patterns, and a blacklist. Adds a Tools > Email Router admin page.
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: Mike Joslyn
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
